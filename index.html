@@ -286,6 +286,8 @@ body.timing .timer-pad { position: fixed; inset: 0; z-index: 80; border-radius: 
 .trainer-vis .dias > .dia { flex: none; max-width: 230px; max-height: 32vh; width: 100%; }
 .trainer-vis .c3 { max-width: 220px; }
 .trainer-vis:has(.c3wrap:not(.hidden)) .dias > .dia { max-height: 22vh; }
+.seg button svg { width: 18px; height: 18px; vertical-align: -3px; margin-right: 4px; }
+.btns.three .btn { min-height: 66px; line-height: 1.2; }
 </style>
 </head>
 <body>
@@ -2393,7 +2395,139 @@ const Logic = (() => {
     };
   };
 
-  VIEWS.drill = () => ({ title: 'Drill', tab: 'drill', html: '<div class="card empty"><div class="big-ico">🃏</div><p>Der Drill folgt in Phase 3.</p></div>' });
+  /* ---------- Drill (Leitner) ---------- */
+  const D = { id: null, phase: 'setup', options: null, picked: null, ahead: false, last: null, session: 0, showAlg: false };
+  const SET_NAMES = { beginner: 'Anfänger', pll: 'PLL', oll: 'OLL', f2l: 'F2L' };
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const allDrillIds = () => Object.keys(Store.s.cards).filter(id => CASES.has(id));
+  function drillPool() {
+    const f = Store.s.settings.drillSet;
+    return allDrillIds().filter(id => f === 'all' || CASES.get(id).setId === f);
+  }
+  function pickCase() {
+    const cards = Store.s.cards, pool = drillPool();
+    let due = Logic.dueIds(cards, pool, now());
+    if (!due.length && D.ahead) due = pool.slice().sort((a, b) => cards[a].due - cards[b].due);
+    if (due.length > 1 && due[0] === D.last) due = due.slice(1);
+    D.id = due[0] || null;
+    D.phase = 'setup'; D.options = null; D.picked = null; D.showAlg = false;
+    if (D.id && CASES.get(D.id).kind === 'move') D.phase = 'solve';
+  }
+  function makeOptions(c) {
+    const label = x => x.kind === 'move' ? x.name : x.full;
+    const sameKind = [...CASES.values()].filter(x => (x.kind === 'move') === (c.kind === 'move') && x.id !== c.id);
+    const near = sameKind.filter(x => (c.lesson ? x.lesson === c.lesson : x.setId === c.setId));
+    const seen = new Set([label(c)]);
+    const out = [c];
+    for (const x of [...shuffle(near), ...shuffle(sameKind.filter(x => !near.includes(x)))]) {
+      if (out.length >= 4) break;
+      if (seen.has(label(x))) continue;
+      seen.add(label(x)); out.push(x);
+    }
+    return shuffle(out).map(x => ({ id: x.id, label: label(x), auf: x.kind === 'move' ? '' : x.auf }));
+  }
+  function statsLine(id) {
+    const k = Store.s.cards[id];
+    if (!k) return '';
+    const hr = Logic.hitRate(k);
+    return `<div class="stats-line">
+      <span class="chip" title="Leitner-Box ${k.box} von 5"><span class="box-pill">${[1, 2, 3, 4, 5].map(b => `<i class="${b <= k.box ? 'on' : ''}"></i>`).join('')}</span> Box ${k.box}</span>
+      <span class="chip">${k.reps} Wdh.</span>
+      <span class="chip">${hr == null ? '– %' : Math.round(hr * 100) + ' %'} Treffer</span>
+      <span class="chip">zuletzt ${ago(k.last)}</span></div>`;
+  }
+  function drillHTML() {
+    const s = Store.s.settings, cards = Store.s.cards;
+    const all = allDrillIds();
+    if (!all.length) {
+      return `<div class="card empty"><div class="big-ico">🃏</div><h3>Noch keine Fälle im Drill</h3>
+        <p class="muted">Markiere eine Lektion als gelernt oder nimm PLL/OLL-Fälle in der Übersicht auf.</p>
+        <div class="btns two" style="margin-top:12px"><a class="btn primary" href="#/learn">Lernpfad</a><a class="btn" href="#/sets/pll">CFOP-Sets</a></div></div>`;
+    }
+    const sets = [...new Set(all.map(id => CASES.get(id).setId))];
+    if (s.drillSet !== 'all' && !sets.includes(s.drillSet)) s.drillSet = 'all';
+    const pool = drillPool();
+    const due = Logic.dueIds(cards, pool, now()).length;
+    let h = `<div class="seg" data-mode style="margin-bottom:10px">
+        <button data-m="cube" class="${s.drillMode === 'cube' ? 'on' : ''}">${ICON.cube} Am Würfel</button>
+        <button data-m="recog" class="${s.drillMode === 'recog' ? 'on' : ''}">Erkennen</button></div>`;
+    if (sets.length > 1) h += `<div class="seg" data-set style="margin-bottom:10px"><button data-s="all" class="${s.drillSet === 'all' ? 'on' : ''}">Alle</button>${sets.map(id => `<button data-s="${id}" class="${s.drillSet === id ? 'on' : ''}">${SET_NAMES[id] || id}</button>`).join('')}</div>`;
+    h += `<div class="row wrap" style="margin:0 2px 12px"><span class="chip ${due ? 'gold' : ''}">Fällig: ${due}</span><span class="chip">Im Drill: ${pool.length}</span><span class="chip">Heute geübt: ${D.session}</span></div>`;
+    if (D.id && (!CASES.has(D.id) || !pool.includes(D.id))) D.id = null;
+    if (!D.id) pickCase();
+    if (!D.id) {
+      const nd = Logic.nextDue(cards, pool);
+      return h + `<div class="card empty"><div class="big-ico">✓</div><h3>Alles erledigt!</h3>
+        <p class="muted">Nächster Fall fällig ${inTime(nd)}.</p>
+        <button class="btn primary" data-ahead style="margin-top:10px">Trotzdem üben</button></div>`;
+    }
+    const c = CASES.get(D.id);
+    const origin = c.lesson ? `Lektion ${c.lesson.nr} · ${c.lesson.title}` : (SET_NAMES[c.setId] + (c.group ? ' · ' + c.group : ''));
+    const img = c.kind === 'move' ? dias(c, ['iso'], 'lg') : `<div class="dias lg">${c.views.map(v => dia(c, v, { arrows: false })).join('')}</div>`;
+    h += `<div class="card drill-card"><div class="eyebrow">${esc(origin)}</div>${img}`;
+    if (s.drillMode === 'recog') {
+      if (!D.options) D.options = makeOptions(c);
+      const answered = D.picked != null;
+      h += `<h3 style="margin-bottom:10px">${c.kind === 'move' ? 'Welcher Zug ist das?' : 'Welcher Algorithmus löst diesen Fall?'}</h3><div class="options">` +
+        D.options.map((o, k) => `<button class="option ${answered && o.id === c.id ? 'right' : ''} ${answered && D.picked === k && o.id !== c.id ? 'wrong' : ''}" data-opt="${k}" ${answered ? 'disabled' : ''}>${esc(o.label)}</button>`).join('') + '</div>';
+      if (answered) {
+        const ok = D.options[D.picked].id === c.id;
+        h += `<p style="margin-top:12px"><b style="color:var(${ok ? '--good' : '--bad'})">${ok ? 'Richtig!' : 'Leider falsch.'}</b> ${esc(c.name)}</p>
+          ${c.kind === 'move' ? '' : caseButtons(c)}
+          <button class="btn primary big block" data-next style="margin-top:10px">Weiter</button>`;
+      }
+    } else if (D.phase === 'setup') {
+      h += `<p class="muted small">1. Aufsetzen – vom gelösten Würfel aus, Gelb oben, Grün vorne:</p>
+        <div class="alg md" style="margin:4px 0 12px">${esc(Cube.invertStr(c.full))}</div>
+        <button class="btn primary big block" data-go>Aufgesetzt – jetzt lösen</button>`;
+    } else {
+      h += c.kind === 'move'
+        ? `<h3>Welcher Zug ist das? Führe ihn am Würfel aus.</h3>`
+        : `<p class="muted small">2. Löse den Fall jetzt aus dem Kopf.</p>`;
+      h += D.showAlg
+        ? `<div style="margin:10px 0"><div class="eyebrow">${esc(c.name)}</div>${algHTML(c)}</div>${c.kind === 'move' ? `<p>${esc(c.recognize)}</p>` : caseButtons(c)}`
+        : `<button class="btn block" data-show style="margin:10px 0">Lösung zeigen</button>`;
+      h += `<p class="muted small" style="margin:14px 0 6px">Wie gut wusstest du es?</p>
+        <div class="btns three"><button class="btn good" data-g="good">Sofort<br>gewusst</button><button class="btn warn" data-g="hard">Mit<br>Mühe</button><button class="btn bad" data-g="again">Nicht<br>gewusst</button></div>`;
+    }
+    h += statsLine(c.id) + '</div>';
+    return h;
+  }
+  function grade(g) {
+    const k = Logic.review(Store.s.cards[D.id], g, now());
+    Store.s.cards[D.id] = k; Store.save();
+    D.session++; D.last = D.id;
+    toast(`Box ${k.box} · wieder ${inTime(k.due)}`);
+    pickCase();
+  }
+  VIEWS.drill = () => ({
+    title: 'Drill', tab: 'drill', html: '<div data-drill></div>',
+    mount(el) {
+      const box = $('[data-drill]', el);
+      const draw = () => { box.innerHTML = drillHTML(); };
+      draw();
+      bindCaseButtons(box);
+      box.addEventListener('click', e => {
+        const t = e.target.closest('button'); if (!t) return;
+        const s = Store.s.settings;
+        if (t.dataset.m) { s.drillMode = t.dataset.m; Store.save(); D.options = null; D.picked = null; D.phase = CASES.get(D.id)?.kind === 'move' ? 'solve' : 'setup'; }
+        else if (t.dataset.s) { s.drillSet = t.dataset.s; Store.save(); D.id = null; }
+        else if ('ahead' in t.dataset) { D.ahead = true; D.id = null; }
+        else if ('go' in t.dataset) D.phase = 'solve';
+        else if ('show' in t.dataset) D.showAlg = true;
+        else if (t.dataset.g) grade(t.dataset.g);
+        else if (t.dataset.opt != null) {
+          D.picked = +t.dataset.opt;
+          const ok = D.options[D.picked].id === D.id;
+          const k = Logic.review(Store.s.cards[D.id], ok ? 'good' : 'again', now());
+          Store.s.cards[D.id] = k; Store.save(); D.session++;
+        }
+        else if ('next' in t.dataset) { D.last = D.id; pickCase(); }
+        else return;
+        draw();
+      });
+    },
+  });
   VIEWS.timer = () => ({ title: 'Timer', tab: 'timer', html: '<div class="card empty"><div class="big-ico">⏱</div><p>Der Timer folgt in Phase 4.</p></div>' });
   VIEWS.sets = () => ({ title: 'Sets', tab: 'sets', html: '<div class="card empty"><div class="big-ico">▦</div><p>Die Übersicht folgt in Phase 4.</p></div>' });
   VIEWS.more = () => ({ title: 'Mehr', tab: 'more', html: '<div class="card empty"><p>Einstellungen folgen.</p></div>' });
