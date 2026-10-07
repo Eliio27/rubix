@@ -2501,7 +2501,7 @@ const Logic = (() => {
     pickCase();
   }
   VIEWS.drill = () => ({
-    title: 'Drill', tab: 'drill', html: '<div data-drill></div>',
+    title: 'Drill', tab: 'drill', wake: true, html: '<div data-drill></div>',
     mount(el) {
       const box = $('[data-drill]', el);
       const draw = () => { box.innerHTML = drillHTML(); };
@@ -2723,7 +2723,7 @@ const Logic = (() => {
         <p class="muted small">Alles wird nur auf diesem Gerät gespeichert. Exportiere eine JSON-Datei als Backup oder um auf ein anderes Gerät umzuziehen.</p>
         <div class="btns two"><button class="btn primary" data-export>Exportieren</button><label class="btn">Importieren<input type="file" accept="application/json,.json" data-import hidden></label></div></div>
       <div class="card"><div class="eyebrow">Einstellungen</div>
-        <div class="switch" style="cursor:default"><span>Animationstempo</span><div class="seg" data-speed>${[0.5, 1, 1.5, 2].map(v => `<button data-v="${v}" class="${set.speed === v ? 'on' : ''}">${String(v).replace('.', ',')}×</button>`).join('')}</div></div>
+        <div style="padding:8px 0"><div style="margin-bottom:6px">Animationstempo</div><div class="seg" data-speed>${[0.5, 1, 1.5, 2].map(v => `<button data-v="${v}" class="${set.speed === v ? 'on' : ''}">${String(v).replace('.', ',')}×</button>`).join('')}</div></div>
         <label class="switch"><span>3D-Hilfe im Zug-für-Zug-Modus</span><input type="checkbox" data-s3d ${set.show3d ? 'checked' : ''}></label>
         <label class="switch"><span>15 s Inspektion im Timer</span><input type="checkbox" data-insp ${set.inspection ? 'checked' : ''}></label></div>
       <div class="card"><div class="eyebrow">App</div>
@@ -2793,6 +2793,17 @@ const Logic = (() => {
   window.addEventListener('hashchange', () => { closeOverlay(true); render(); });
   if (!location.hash) history.replaceState(null, '', '#/learn');
   render();
+
+  /* ---------- Offline (Service Worker) ---------- */
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    window.addEventListener('load', () => {
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (hadController) toast('Neue Version installiert – beim nächsten Öffnen aktiv');
+      });
+    });
+  }
 
   // Für Tests/Debugging
   window.CubeCoach = { Store, CASES, render, openTrainer, openPlayer, caseState };
