@@ -1,0 +1,2813 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16130f">
+<meta name="description" content="Cube Coach – Trainer für den echten 3×3 Zauberwürfel: Lernpfad, Drill mit Spaced Repetition, Timer und CFOP-Sets. Offline.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cube Coach">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Cube Coach</title>
+<style>
+:root {
+  --bg: #16130f; --bg2: #1d1915; --card: #25201a; --card2: #2e2820; --line: #3a3229;
+  --text: #f2ebdf; --muted: #a89b88; --dim: #7b705f;
+  --gold: #d9a845; --gold2: #f1c86a; --gold-ink: #241a08;
+  --good: #7fb36a; --warn: #e3a04b; --bad: #d8654c; --info: #79a7c9;
+  --b0: #3a3229; --b1: #c9573f; --b2: #df8c3c; --b3: #d9b445; --b4: #a2c062; --b5: #5fae6e;
+  --r: 16px; --r-sm: 11px;
+  --tap: 52px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--text); font: 17px/1.5 var(--font);
+  -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--gold2); }
+h1, h2, h3 { line-height: 1.2; margin: 0; font-weight: 700; }
+h2 { font-size: 1.35rem; }
+h3 { font-size: 1.08rem; }
+p { margin: .4em 0; }
+.muted { color: var(--muted); }
+.small { font-size: .88rem; }
+.hidden { display: none !important; }
+
+/* ---------- Gerüst ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 8px;
+  padding: calc(var(--safe-t) + 8px) 12px 8px; min-height: 58px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.topbar h1 { font-size: 1.12rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .brand { display: flex; align-items: center; gap: 10px; }
+.topbar .brand svg { width: 28px; height: 28px; }
+.icon-btn {
+  width: 44px; height: 44px; border-radius: 12px; border: 0; background: transparent;
+  display: inline-grid; place-items: center; cursor: pointer; color: var(--text);
+}
+.icon-btn:active { background: var(--card); }
+.icon-btn svg { width: 24px; height: 24px; }
+main { max-width: 760px; margin: 0 auto; padding: 14px 16px calc(96px + var(--safe-b)); }
+.tabs {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; justify-content: center;
+  background: color-mix(in srgb, var(--bg2) 94%, transparent); backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line); padding: 4px 4px calc(4px + var(--safe-b));
+}
+.tabs a {
+  flex: 1; max-width: 150px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 7px 0 5px; color: var(--muted); text-decoration: none; font-size: .74rem; border-radius: 12px; min-height: var(--tap);
+}
+.tabs a svg { width: 25px; height: 25px; }
+.tabs a.on { color: var(--gold2); }
+.tabs a.on svg { filter: drop-shadow(0 0 6px rgba(241, 200, 106, .35)); }
+body.timing .tabs, body.timing .topbar { visibility: hidden; }
+
+/* ---------- Bausteine ---------- */
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 16px; margin: 0 0 14px;
+}
+.card.flat { background: var(--bg2); }
+.card.gold { border-color: color-mix(in srgb, var(--gold) 55%, var(--line)); }
+.stack > * + * { margin-top: 10px; }
+.row { display: flex; gap: 10px; align-items: center; }
+.row.wrap { flex-wrap: wrap; }
+.row.between { justify-content: space-between; }
+.grow { flex: 1; }
+.eyebrow { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+.section-title { margin: 22px 2px 10px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.btn {
+  min-height: var(--tap); padding: 0 20px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--card2); font-weight: 650; cursor: pointer; display: inline-flex; align-items: center;
+  justify-content: center; gap: 8px; text-decoration: none; color: var(--text); user-select: none;
+  touch-action: manipulation; transition: transform .08s, background .15s;
+}
+.btn:active { transform: scale(.97); }
+.btn svg { width: 20px; height: 20px; }
+.btn.primary { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); }
+.btn.primary:active { background: var(--gold2); }
+.btn.ghost { background: transparent; }
+.btn.block { width: 100%; }
+.btn.big { min-height: 64px; font-size: 1.12rem; border-radius: 18px; }
+.btn.sm { min-height: 40px; padding: 0 14px; font-size: .92rem; border-radius: 11px; }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.btn.good { background: color-mix(in srgb, var(--good) 22%, var(--card2)); border-color: color-mix(in srgb, var(--good) 60%, var(--line)); }
+.btn.warn { background: color-mix(in srgb, var(--warn) 18%, var(--card2)); border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+.btn.bad { background: color-mix(in srgb, var(--bad) 18%, var(--card2)); border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+.btns { display: grid; gap: 10px; }
+.btns.two { grid-template-columns: 1fr 1fr; }
+.btns.three { grid-template-columns: repeat(3, 1fr); }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px;
+  background: var(--card2); border: 1px solid var(--line); font-size: .82rem; color: var(--muted); white-space: nowrap;
+}
+.chip.gold { color: var(--gold2); border-color: color-mix(in srgb, var(--gold) 50%, var(--line)); }
+.chip.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+.seg {
+  display: flex; background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; padding: 4px; gap: 4px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.seg button {
+  flex: 1; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--muted);
+  font-weight: 650; cursor: pointer; padding: 0 12px; white-space: nowrap;
+}
+.seg button.on { background: var(--card2); color: var(--gold2); box-shadow: inset 0 0 0 1px var(--line); }
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--tap); cursor: pointer; }
+.switch input { appearance: none; width: 52px; height: 32px; border-radius: 99px; background: var(--line); position: relative; flex: none; cursor: pointer; transition: background .2s; }
+.switch input::after { content: ""; position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; border-radius: 50%; background: var(--text); transition: transform .2s; }
+.switch input:checked { background: var(--gold); }
+.switch input:checked::after { transform: translateX(20px); background: var(--gold-ink); }
+.progress { height: 8px; border-radius: 99px; background: var(--bg2); overflow: hidden; border: 1px solid var(--line); }
+.progress > i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold2)); border-radius: 99px; }
+.empty { text-align: center; padding: 28px 12px; }
+.empty .big-ico { font-size: 2.6rem; margin-bottom: 6px; }
+.toast {
+  position: fixed; left: 50%; bottom: calc(90px + var(--safe-b)); transform: translateX(-50%) translateY(20px);
+  background: var(--card2); border: 1px solid var(--gold); color: var(--text); padding: 12px 18px; border-radius: 14px;
+  z-index: 100; opacity: 0; transition: .25s; pointer-events: none; max-width: calc(100vw - 32px); box-shadow: 0 10px 30px rgba(0,0,0,.4);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------- Algorithmen ---------- */
+.alg { font-family: var(--mono); font-size: 1.5rem; font-weight: 650; letter-spacing: .02em; line-height: 1.45; word-spacing: .18em; color: var(--gold2); overflow-wrap: anywhere; }
+.alg.md { font-size: 1.15rem; }
+.alg.sm { font-size: .95rem; color: var(--text); }
+.alg .auf { color: var(--muted); font-weight: 500; }
+.moves { display: flex; flex-wrap: wrap; gap: 6px; }
+.mv {
+  font-family: var(--mono); font-weight: 700; font-size: 1.05rem; min-width: 42px; height: 38px; padding: 0 8px;
+  display: inline-grid; place-items: center; border-radius: 10px; background: var(--bg2); border: 1px solid var(--line); color: var(--muted);
+}
+.mv.done { color: var(--dim); background: transparent; border-style: dashed; }
+.mv.now { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); transform: scale(1.06); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: .95rem; }
+.kv dt { color: var(--gold); font-weight: 650; }
+.kv dd { margin: 0; }
+
+/* ---------- Diagramme ---------- */
+.dia { display: block; width: 100%; height: auto; }
+.dias { display: flex; gap: 12px; justify-content: center; align-items: center; }
+.dias > .dia { flex: 1 1 0; min-width: 0; max-width: 220px; }
+.dias.lg > .dia { max-width: 280px; }
+.dias .cap { font-size: .72rem; color: var(--muted); text-align: center; }
+.dia-wrap { flex: 1 1 0; min-width: 0; max-width: 240px; }
+.dia-net { max-width: 320px; margin: 0 auto; }
+
+/* ---------- Lernpfad ---------- */
+.lesson-item {
+  display: flex; gap: 14px; align-items: center; text-decoration: none; color: inherit;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; margin-bottom: 10px; min-height: 84px;
+}
+.lesson-item:active { background: var(--card2); }
+.lesson-item .nr {
+  width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 800;
+  background: var(--bg2); border: 2px solid var(--line); color: var(--muted);
+}
+.lesson-item.done .nr { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); }
+.lesson-item .thumb { width: 60px; flex: none; }
+.lesson-item .t { flex: 1; min-width: 0; }
+.lesson-item .t b { display: block; font-size: 1.04rem; }
+.lesson-item .t span { display: block; color: var(--muted); font-size: .86rem; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.scenario .head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+.scenario .dias { margin: 6px 0 12px; }
+.move-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.move-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; text-align: center; cursor: pointer; color: inherit; }
+.move-card .alg { font-size: 1.6rem; }
+.move-card .dia { max-width: 140px; margin: 0 auto; }
+.move-card:active { background: var(--card2); }
+
+/* ---------- Trainer (Zug für Zug) ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 60; background: var(--bg); display: flex; flex-direction: column;
+  padding: calc(var(--safe-t) + 6px) 0 calc(var(--safe-b) + 10px); animation: up .2s ease-out;
+}
+@keyframes up { from { transform: translateY(16px); opacity: 0; } }
+.overlay .ov-head { display: flex; align-items: center; gap: 8px; padding: 4px 12px; }
+.overlay .ov-head h2 { flex: 1; font-size: 1.08rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overlay .ov-body { flex: 1; overflow-y: auto; padding: 8px 16px; max-width: 760px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.overlay .ov-foot { padding: 8px 16px 0; max-width: 760px; width: 100%; margin: 0 auto; }
+.step-move { text-align: center; }
+.step-move .big-move { font-family: var(--mono); font-size: 4.2rem; font-weight: 800; color: var(--gold2); line-height: 1; }
+.step-move .desc { color: var(--text); font-size: 1.05rem; margin-top: 6px; min-height: 1.5em; }
+.step-move .count { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+
+/* ---------- 3D-Würfel ---------- */
+.c3 { position: relative; width: 100%; max-width: 300px; aspect-ratio: 1; margin: 0 auto; perspective: 900px; touch-action: none; cursor: grab; }
+.c3-cube { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d; }
+.c3-cubie { position: absolute; transform-style: preserve-3d; }
+.c3-face { position: absolute; inset: 0; background: #0d0b09; border-radius: 6%; }
+.c3-face i { position: absolute; inset: 7%; border-radius: 13%; }
+.player .moves { justify-content: center; }
+.player-ctrl { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.player-ctrl .btn { padding: 0; }
+.speed { display: flex; gap: 6px; justify-content: center; align-items: center; }
+
+/* ---------- Drill ---------- */
+.drill-card .dias { margin: 4px 0 10px; }
+.options { display: grid; gap: 10px; }
+.option {
+  text-align: left; padding: 12px 14px; min-height: 60px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--card2); cursor: pointer; font-family: var(--mono); font-size: 1rem; line-height: 1.4; color: var(--text);
+}
+.option.right { border-color: var(--good); background: color-mix(in srgb, var(--good) 22%, var(--card2)); }
+.option.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 22%, var(--card2)); }
+.option[disabled] { cursor: default; }
+.stats-line { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.box-pill { display: inline-flex; gap: 3px; }
+.box-pill i { width: 12px; height: 8px; border-radius: 3px; background: var(--line); }
+.box-pill i.on { background: var(--gold); }
+
+/* ---------- Übersicht ---------- */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.tile {
+  background: var(--card); border: 2px solid var(--b0); border-radius: 14px; padding: 8px 6px 6px; text-align: center;
+  text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 4px; position: relative;
+}
+.tile:active { transform: scale(.97); }
+.tile b { font-size: .86rem; }
+.tile .dia { max-width: 84px; margin: 0 auto; }
+.tile.b1 { border-color: var(--b1); } .tile.b2 { border-color: var(--b2); } .tile.b3 { border-color: var(--b3); }
+.tile.b4 { border-color: var(--b4); } .tile.b5 { border-color: var(--b5); }
+.tile.indrill::after { content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: .78rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 14px; height: 14px; border-radius: 4px; border: 2px solid; }
+
+/* ---------- Timer ---------- */
+.scramble { font-family: var(--mono); font-size: 1.22rem; line-height: 1.6; word-spacing: .22em; text-align: center; font-weight: 600; }
+.timer-pad {
+  user-select: none; -webkit-user-select: none; touch-action: none; cursor: pointer;
+  border-radius: 22px; background: var(--bg2); border: 1px solid var(--line); padding: 34px 12px; text-align: center; min-height: 230px;
+  display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px;
+}
+.timer-pad .time { font-family: var(--mono); font-size: clamp(3.6rem, 19vw, 6.5rem); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.timer-pad.holding .time { color: var(--bad); }
+.timer-pad.ready .time { color: var(--good); }
+.timer-pad.inspect .time { color: var(--warn); }
+.timer-pad.running .time { color: var(--text); }
+body.timing .timer-pad { position: fixed; inset: 0; z-index: 80; border-radius: 0; border: 0; background: var(--bg); }
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.stat { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 6px; text-align: center; }
+.stat b { display: block; font-family: var(--mono); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.stat span { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.times { list-style: none; margin: 0; padding: 0; }
+.times li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.times li .n { color: var(--dim); width: 34px; font-size: .85rem; }
+.times li .t { flex: 1; font-family: var(--mono); font-size: 1.08rem; font-variant-numeric: tabular-nums; }
+.times li .btn { min-height: 38px; padding: 0 10px; font-size: .82rem; }
+.times li .btn.on { border-color: var(--warn); color: var(--warn); }
+
+@media (min-width: 640px) {
+  .stat b { font-size: 1.25rem; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); }
+  .tile .dia { max-width: 100px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+.btns .btn { padding: 0 12px; white-space: nowrap; }
+.trainer-vis { display: flex; gap: 10px; align-items: center; justify-content: center; }
+.trainer-vis > * { flex: 1 1 0; min-width: 0; }
+.trainer-vis .dias { flex-direction: column; gap: 6px; }
+.trainer-vis .dias > .dia { flex: none; max-width: 230px; max-height: 32vh; width: 100%; }
+.trainer-vis .c3 { max-width: 220px; }
+.trainer-vis:has(.c3wrap:not(.hidden)) .dias > .dia { max-height: 22vh; }
+.seg button svg { width: 18px; height: 18px; vertical-align: -3px; margin-right: 4px; }
+.btns.three .btn { min-height: 66px; line-height: 1.2; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn hidden" id="back" aria-label="Zurück"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+  <h1 id="title" class="brand">Cube Coach</h1>
+  <span id="top-actions"></span>
+</header>
+<main id="view" tabindex="-1"></main>
+<nav class="tabs" id="tabs" aria-label="Hauptnavigation"></nav>
+<div id="overlay-root"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<noscript><p style="padding:20px">Cube Coach braucht JavaScript.</p></noscript>
+<script id="engine">
+/* ===== Würfel-Engine ===== */
+const Cube = (() => {
+  'use strict';
+  // Flächen-Reihenfolge und Sticker-Index: face*9 + row*3 + col
+  const FACES = ['U', 'R', 'F', 'D', 'L', 'B'];
+  const NORMALS = { U: [0, 1, 0], R: [1, 0, 0], F: [0, 0, 1], D: [0, -1, 0], L: [-1, 0, 0], B: [0, 0, -1] };
+  // Farben im gelösten Zustand: Gelb oben, Grün vorne (Weiss unten)
+  const COLORS = { U: '#f5d000', R: '#ff7a1a', F: '#16a34a', D: '#f4f4f0', L: '#d62828', B: '#1d5fd1' };
+  const COLOR_NAMES = { U: 'Gelb', R: 'Orange', F: 'Grün', D: 'Weiss', L: 'Rot', B: 'Blau' };
+
+  // 3D-Position (Würfelchen-Mittelpunkt, Koordinaten -1..1) eines Stickers.
+  // x nach rechts, y nach oben, z nach vorne.
+  function posOf(face, r, c) {
+    switch (face) {
+      case 'U': return [c - 1, 1, r - 1];
+      case 'D': return [c - 1, -1, 1 - r];
+      case 'F': return [c - 1, 1 - r, 1];
+      case 'B': return [1 - c, 1 - r, -1];
+      case 'R': return [1, 1 - r, 1 - c];
+      case 'L': return [-1, 1 - r, c - 1];
+    }
+  }
+
+  const STICKERS = [];
+  const INDEX = new Map();
+  const key = (p, n) => p.join(',') + '|' + n.join(',');
+  FACES.forEach((face, f) => {
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+      const pos = posOf(face, r, c), n = NORMALS[face];
+      const i = f * 9 + r * 3 + c;
+      STICKERS.push({ i, face, r, c, pos, n });
+      INDEX.set(key(pos, n), i);
+    }
+  });
+
+  // Würfelchen (Pieces): Position -> Sticker-Indizes
+  const PIECES = new Map();
+  STICKERS.forEach(s => {
+    const k = s.pos.join(',');
+    if (!PIECES.has(k)) PIECES.set(k, []);
+    PIECES.get(k).push(s.i);
+  });
+  const pieceOf = i => PIECES.get(STICKERS[i].pos.join(','));
+  const pieceType = i => ['core', 'center', 'edge', 'corner'][STICKERS[i].pos.filter(v => v !== 0).length];
+  const pieceFaces = i => pieceOf(i).map(j => STICKERS[j].face);
+
+  const AX = { x: 0, y: 1, z: 2 };
+  // Vierteldrehung um Achse, q=+1: +90° (Rechte-Hand-Regel)
+  function rot(v, axis, q) {
+    const [x, y, z] = v;
+    const s = q > 0 ? 1 : -1;
+    if (axis === 'x') return [x, -s * z, s * y];
+    if (axis === 'y') return [s * z, y, -s * x];
+    return [-s * y, s * x, z];
+  }
+
+  // Grundzüge: Achse, betroffene Schichten, Drehsinn (Uhrzeigersinn von der Fläche aus gesehen)
+  const ALL = [-1, 0, 1];
+  const MOVE_DEFS = {
+    R: ['x', [1], -1], L: ['x', [-1], 1], M: ['x', [0], 1], r: ['x', [0, 1], -1], l: ['x', [-1, 0], 1], x: ['x', ALL, -1],
+    U: ['y', [1], -1], D: ['y', [-1], 1], E: ['y', [0], 1], u: ['y', [0, 1], -1], d: ['y', [-1, 0], 1], y: ['y', ALL, -1],
+    F: ['z', [1], -1], B: ['z', [-1], 1], S: ['z', [0], -1], f: ['z', [0, 1], -1], b: ['z', [-1, 0], 1], z: ['z', ALL, -1],
+  };
+
+  // Permutationen: PERM[move][k-1][i] = Ziel-Index von Sticker i nach k Vierteldrehungen
+  const PERM = {};
+  for (const [m, [axis, layers, q]] of Object.entries(MOVE_DEFS)) {
+    const p1 = STICKERS.map(s => {
+      if (!layers.includes(s.pos[AX[axis]])) return s.i;
+      return INDEX.get(key(rot(s.pos, axis, q), rot(s.n, axis, q)));
+    });
+    const p2 = p1.map(j => p1[j]);
+    const p3 = p2.map(j => p1[j]);
+    PERM[m] = [p1, p2, p3];
+  }
+
+  const solved = () => STICKERS.map(s => s.i);
+  const isSolved = st => st.every((v, i) => v === i);
+
+  // Zustand: st[i] = ursprünglicher Sticker, der jetzt an Position i liegt
+  function applyMove(st, mv) {
+    const p = PERM[mv.base][mv.amount - 1];
+    const out = new Array(54);
+    for (let i = 0; i < 54; i++) out[p[i]] = st[i];
+    return out;
+  }
+  function apply(st, alg) {
+    const moves = typeof alg === 'string' ? parse(alg) : alg;
+    return moves.reduce(applyMove, st);
+  }
+
+  // Notation: R U R' U2, Rw/r (wide), M E S, x y z, Klammern werden ignoriert, (..)2 / (..)3 wiederholt
+  function parse(str) {
+    if (!str) return [];
+    str = String(str).replace(/[’`´]/g, "'").replace(/\[|\]/g, '');
+    // Gruppen-Wiederholung (A B)2
+    let prev;
+    do {
+      prev = str;
+      str = str.replace(/\(([^()]*)\)\s*(\d)?/g, (_, inner, n) => (' ' + inner + ' ').repeat(n ? +n : 1));
+    } while (str !== prev);
+    const out = [];
+    const re = /([RLUDFBMESxyzrludfb])(w?)(\d*)('?)/g;
+    let m;
+    const cleaned = str.replace(/\s+/g, ' ');
+    let consumed = 0;
+    while ((m = re.exec(cleaned))) {
+      if (cleaned.slice(consumed, m.index).trim()) throw new Error('Unbekannte Notation: ' + cleaned.slice(consumed, m.index));
+      consumed = m.index + m[0].length;
+      let base = m[1];
+      if (m[2]) { if (!'RLUDFB'.includes(base)) throw new Error('Ungültig: ' + m[0]); base = base.toLowerCase(); }
+      let n = m[3] ? parseInt(m[3], 10) : 1;
+      if (m[4]) n = -n;
+      const amount = ((n % 4) + 4) % 4;
+      if (amount) out.push({ base, amount });
+    }
+    if (cleaned.slice(consumed).trim()) throw new Error('Unbekannte Notation: ' + cleaned.slice(consumed));
+    return out;
+  }
+  const moveStr = mv => mv.base + (mv.amount === 2 ? '2' : mv.amount === 3 ? "'" : '');
+  const format = moves => moves.map(moveStr).join(' ');
+  const invert = alg => {
+    const moves = typeof alg === 'string' ? parse(alg) : alg;
+    return moves.slice().reverse().map(m => ({ base: m.base, amount: 4 - m.amount }));
+  };
+  const invertStr = alg => format(invert(alg));
+
+  // Fall-Zustand: invertierter Algorithmus auf den gelösten Würfel angewendet
+  const caseState = (alg, pre) => apply(pre ? apply(solved(), pre) : solved(), invert(alg));
+
+  // Scramble: 20 Züge, keine Folgezüge auf derselben Fläche, keine "R L R"-Redundanz
+  const FACE_AXIS = { R: 0, L: 0, U: 1, D: 1, F: 2, B: 2 };
+  function scramble(len = 20, rnd = Math.random) {
+    const faces = 'RLUDFB';
+    const out = [];
+    while (out.length < len) {
+      const f = faces[Math.floor(rnd() * 6)];
+      const a = out[out.length - 1], b = out[out.length - 2];
+      if (a && a.base === f) continue;
+      if (a && b && FACE_AXIS[a.base] === FACE_AXIS[f] && FACE_AXIS[b.base] === FACE_AXIS[f]) continue;
+      out.push({ base: f, amount: 1 + Math.floor(rnd() * 3) });
+    }
+    return format(out);
+  }
+
+  // Farbe eines Stickers (anhand des Ursprungs)
+  const faceOfOrig = o => FACES[Math.floor(o / 9)];
+  const colorAt = (st, i) => COLORS[faceOfOrig(st[i])];
+
+  // Alle 24 Würfel-Orientierungen
+  const ROTATIONS = (() => {
+    const res = [];
+    const seen = new Set();
+    for (const a of ['', 'x', 'x2', "x'", 'z', "z'"]) for (const b of ['', 'y', 'y2', "y'"]) {
+      const alg = (a + ' ' + b).trim();
+      const st = apply(solved(), alg);
+      const k = st.join(',');
+      if (!seen.has(k)) { seen.add(k); res.push(alg); }
+    }
+    return res;
+  })();
+  // Gelöst unabhängig von der Haltung
+  const isSolvedAnyOrientation = st => ROTATIONS.some(r => isSolved(apply(st, r)));
+  // Mittelsteine an ihrem Platz?
+  const centersHome = st => [4, 13, 22, 31, 40, 49].every(i => st[i] === i);
+
+  // Helfer für Tests/Erkennung
+  const stickersWhere = pred => STICKERS.filter(pred).map(s => s.i);
+  const U_LAYER = stickersWhere(s => s.pos[1] === 1);
+  const F2L = stickersWhere(s => s.pos[1] < 1);
+
+  return {
+    FACES, NORMALS, COLORS, COLOR_NAMES, STICKERS, PIECES, MOVE_DEFS, PERM, ROTATIONS, U_LAYER, F2L, AX,
+    indexOf: (p, n) => INDEX.get(key(p, n)),
+    posOf, rot, pieceOf, pieceType, pieceFaces, solved, isSolved, isSolvedAnyOrientation, centersHome,
+    applyMove, apply, parse, format, moveStr, invert, invertStr, caseState, scramble, faceOfOrig, colorAt,
+  };
+})();
+</script>
+<script id="render">
+/* ===== SVG-Diagramme ===== */
+const Render = (() => {
+  'use strict';
+  const C = Cube;
+  const GREY = '#5a534b', BODY = '#0d0b09', ARROW = '#f2c14e', ARROW_EDGE = '#1a1410';
+  const INFO = C.STICKERS.map(s => ({ t: C.pieceType(s.i), faces: C.pieceFaces(s.i) }));
+
+  // Masken: welche Sticker farbig, grau oder nur-gelb dargestellt werden (anhand des Ursprungs-Stickers)
+  const MASKS = {
+    full: () => 'c',
+    cross: f => f.t === 'center' || (f.t === 'edge' && f.faces.includes('D')) ? 'c' : 'g',
+    firstLayer: f => f.t === 'center' || f.faces.includes('D') ? 'c' : 'g',
+    f2l: f => f.t === 'center' || !f.faces.includes('U') ? 'c' : 'g',
+    llEdges: f => f.t === 'center' || !f.faces.includes('U') ? 'c' : f.t === 'edge' ? 'y' : 'g',
+    oll: f => !f.faces.includes('U') ? 'c' : 'y',
+    llCorners: f => !f.faces.includes('U') || f.t === 'corner' ? 'c' : 'y',
+    pll: () => 'c',
+  };
+  function color(st, i, mask) {
+    const o = st[i];
+    const m = (MASKS[mask] || MASKS.full)(INFO[o]);
+    const face = C.faceOfOrig(o);
+    if (m === 'g') return GREY;
+    if (m === 'y') return face === 'U' ? C.COLORS.U : GREY;
+    return C.COLORS[face];
+  }
+
+  const f2 = n => Math.round(n * 1000) / 1000;
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const add = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
+  const norm = a => { const l = Math.hypot(...a); return a.map(v => v / l); };
+
+  // Pfeil (Linie + Spitze) in 2D
+  function arrow2d(pts, { w = 0.13, head = 0.34, label = '', both = false, fill = ARROW, edge = ARROW_EDGE } = {}) {
+    const n = pts.length;
+    const [x1, y1] = pts[n - 2], [x2, y2] = pts[n - 1];
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const tip = (x, y, a) => {
+      const bx = x - Math.cos(a) * head, by = y - Math.sin(a) * head;
+      const px = Math.cos(a + Math.PI / 2) * head * 0.55, py = Math.sin(a + Math.PI / 2) * head * 0.55;
+      return `${f2(x)},${f2(y)} ${f2(bx + px)},${f2(by + py)} ${f2(bx - px)},${f2(by - py)}`;
+    };
+    // Linie endet vor der Spitze
+    const line = pts.map((p, i) => {
+      let [x, y] = p;
+      if (i === n - 1) { x -= Math.cos(ang) * head * 0.8; y -= Math.sin(ang) * head * 0.8; }
+      if (i === 0 && both) { const a0 = Math.atan2(pts[1][1] - y, pts[1][0] - x); x += Math.cos(a0) * head * 0.8; y += Math.sin(a0) * head * 0.8; }
+      return `${f2(x)},${f2(y)}`;
+    }).join(' ');
+    let heads = `<polygon points="${tip(x2, y2, ang)}"/>`;
+    if (both) {
+      const a0 = Math.atan2(pts[0][1] - pts[1][1], pts[0][0] - pts[1][0]);
+      heads += `<polygon points="${tip(pts[0][0], pts[0][1], a0)}"/>`;
+    }
+    let lab = '';
+    if (label) {
+      lab = `<text x="${f2(x2 + Math.cos(ang) * 0.32)}" y="${f2(y2 + Math.sin(ang) * 0.32 + 0.14)}" font-size="0.42" font-weight="700" text-anchor="middle" fill="${ARROW}" stroke="${ARROW_EDGE}" stroke-width="0.08" paint-order="stroke">${label}</text>`;
+    }
+    const halo = edge ? `<polyline points="${line}" fill="none" stroke="${edge}" stroke-width="${f2(w + 0.1)}" stroke-linecap="round" stroke-linejoin="round"/>` : '';
+    return `<g class="arr">${halo}<polyline points="${line}" fill="none" stroke="${fill}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<g fill="${fill}" stroke="${edge || fill}" stroke-width="0.05" stroke-linejoin="round">${heads}</g>${lab}</g>`;
+  }
+
+  /* --- Draufsicht der oberen Ebene mit Seitenstreifen (OLL/PLL) --- */
+  function top(st, o = {}) {
+    const mask = o.mask || 'pll';
+    let out = `<rect x="-1.56" y="-1.56" width="3.12" height="3.12" rx="0.16" fill="${BODY}"/>`;
+    for (const i of C.U_LAYER) {
+      const s = C.STICKERS[i];
+      const col = color(st, i, mask);
+      if (s.face === 'U') {
+        out += `<rect x="${s.pos[0] - 0.45}" y="${s.pos[2] - 0.45}" width="0.9" height="0.9" rx="0.12" fill="${col}"/>`;
+      } else {
+        const [nx, , nz] = s.n;
+        const cx = nx ? nx * 1.8 : s.pos[0], cy = nz ? nz * 1.8 : s.pos[2];
+        const w = nx ? 0.3 : 0.86, h = nx ? 0.86 : 0.3;
+        out += `<rect x="${f2(cx - w / 2)}" y="${f2(cy - h / 2)}" width="${w}" height="${h}" rx="0.08" fill="${col}"/>`;
+      }
+    }
+    if (o.arrows) out += pllArrows(st);
+    return `<svg class="dia dia-top" viewBox="-2.05 -2.05 4.1 4.1" role="img" aria-label="${o.label || 'Draufsicht obere Ebene'}">${out}</svg>`;
+  }
+
+  // Pfeile: von wo nach wo sich die Teile der oberen Ebene bewegen
+  function pllArrows(st) {
+    const cell = i => [C.STICKERS[i].pos[0], C.STICKERS[i].pos[2]];
+    const done = new Set();
+    let out = '';
+    for (const i of [0, 1, 2, 3, 5, 6, 7, 8]) {
+      const o = st[i];
+      if (o > 8 || o === i || done.has(i + '>' + o)) continue;
+      const both = st[o] === i;
+      if (both) done.add(o + '>' + i);
+      let [x1, y1] = cell(i), [x2, y2] = cell(o);
+      const d = Math.hypot(x2 - x1, y2 - y1), k = 0.22 / d;
+      x1 += (x2 - x1) * k; y1 += (y2 - y1) * k; x2 -= (x2 - x1) * k; y2 -= (y2 - y1) * k;
+      out += arrow2d([[x1, y1], [x2, y2]], { w: 0.085, head: 0.3, both, fill: '#1b1611', edge: '' });
+    }
+    return out;
+  }
+
+  /* --- Schrägansicht mit 3 sichtbaren Seiten --- */
+  function camera(bottom) {
+    const V = norm([1, bottom ? -1.1 : 1.1, 1.4]);
+    const R = norm([V[2], 0, -V[0]]);
+    const Up = cross(V, R);
+    return { V, P: p => [dot(p, R), -dot(p, Up)] };
+  }
+  const TANGENTS = { U: [[1, 0, 0], [0, 0, 1]], D: [[1, 0, 0], [0, 0, 1]], F: [[1, 0, 0], [0, 1, 0]], B: [[1, 0, 0], [0, 1, 0]], R: [[0, 0, 1], [0, 1, 0]], L: [[0, 0, 1], [0, 1, 0]] };
+  const SHADE = { U: 0, D: 0.12, F: 0.1, R: 0.22 };
+
+  function iso(st, o = {}) {
+    const mask = o.mask || 'full';
+    const cam = camera(o.bottom);
+    const poly = pts => pts.map(p => cam.P(p).map(f2).join(',')).join(' ');
+    let out = '';
+    const visible = C.FACES.filter(f => dot(C.NORMALS[f], cam.V) > 0);
+    for (const f of visible) {
+      const n = C.NORMALS[f], [a, b] = TANGENTS[f];
+      const c = n.map(v => v * 1.5);
+      out += `<polygon points="${poly([add(add(c, a, -1.5), b, -1.5), add(add(c, a, 1.5), b, -1.5), add(add(c, a, 1.5), b, 1.5), add(add(c, a, -1.5), b, 1.5)])}" fill="${BODY}" stroke="${BODY}" stroke-width="0.08" stroke-linejoin="round"/>`;
+      let g = '';
+      for (const s of C.STICKERS) {
+        if (s.face !== f) continue;
+        const p = add(s.pos, n, 0.5), k = 0.43;
+        g += `<polygon points="${poly([add(add(p, a, -k), b, -k), add(add(p, a, k), b, -k), add(add(p, a, k), b, k), add(add(p, a, -k), b, k)])}" fill="${color(st, s.i, mask)}" stroke="${color(st, s.i, mask)}" stroke-width="0.07" stroke-linejoin="round"/>`;
+      }
+      out += g;
+      if (SHADE[f]) {
+        out += `<polygon points="${poly([add(add(c, a, -1.5), b, -1.5), add(add(c, a, 1.5), b, -1.5), add(add(c, a, 1.5), b, 1.5), add(add(c, a, -1.5), b, 1.5)])}" fill="#000" opacity="${SHADE[f]}" pointer-events="none"/>`;
+      }
+    }
+    if (o.move) out += moveArrows(o.move, cam, visible);
+    // Bounding Box
+    const pts = [];
+    for (const x of [-1.5, 1.5]) for (const y of [-1.5, 1.5]) for (const z of [-1.5, 1.5]) pts.push(cam.P([x, y, z]));
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), m = 0.35;
+    const vb = [Math.min(...xs) - m, Math.min(...ys) - m, Math.max(...xs) - Math.min(...xs) + 2 * m, Math.max(...ys) - Math.min(...ys) + 2 * m].map(f2).join(' ');
+    return `<svg class="dia dia-iso" viewBox="${vb}" role="img" aria-label="${o.label || (o.bottom ? 'Ansicht von unten' : 'Schrägansicht')}">${out}</svg>`;
+  }
+
+  // Pfeile für einen Zug auf den sichtbaren Seiten
+  function moveArrows(mv, cam, visible) {
+    if (typeof mv === 'string') mv = C.parse(mv)[0];
+    if (!mv) return '';
+    const [axis, layers, q] = C.MOVE_DEFS[mv.base];
+    const ai = C.AX[axis];
+    const axisV = [0, 0, 0]; axisV[ai] = 1;
+    const dir = mv.amount === 3 ? -q : q;
+    const omega = axisV.map(v => v * dir);
+    const isRot = 'xyz'.includes(mv.base);
+    const strips = isRot ? [0] : layers;
+    let out = '';
+    for (const f of visible) {
+      const n = C.NORMALS[f];
+      if (n[ai] !== 0) continue;
+      for (const L of strips) {
+        const pts = C.STICKERS.filter(s => s.face === f && s.pos[ai] === L).map(s => add(s.pos, n, 0.5));
+        const mid = pts.reduce((a, p) => add(a, p, 1 / pts.length), [0, 0, 0]);
+        const vel = cross(omega, mid);
+        pts.sort((p1, p2) => dot(p1, vel) - dot(p2, vel));
+        const t = norm(add(pts[2], pts[0], -1));
+        const a = add(pts[0], t, -0.4), b = add(pts[2], t, 0.45);
+        out += arrow2d([cam.P(a), cam.P(b)], { w: isRot ? 0.16 : 0.13, label: mv.amount === 2 ? '2' : '' });
+      }
+    }
+    return out;
+  }
+
+  /* --- Netz (für Scramble-Vorschau) --- */
+  function net(st, o = {}) {
+    const OFF = { U: [3, 0], L: [0, 3], F: [3, 3], R: [6, 3], B: [9, 3], D: [3, 6] };
+    let out = '';
+    for (const s of C.STICKERS) {
+      const [ox, oy] = OFF[s.face];
+      out += `<rect x="${ox + s.c + 0.05}" y="${oy + s.r + 0.05}" width="0.9" height="0.9" rx="0.12" fill="${color(st, s.i, o.mask || 'full')}"/>`;
+    }
+    return `<svg class="dia dia-net" viewBox="-0.2 -0.2 12.4 9.4" role="img" aria-label="${o.label || 'Würfelnetz'}">${out}</svg>`;
+  }
+
+  return { MASKS, color, top, iso, net, moveArrows, arrow2d };
+})();
+</script>
+<script id="cube3d">
+/* ===== 3D-Würfel (CSS 3D Transforms) – nur Hilfsanimation ===== */
+const Cube3D = (() => {
+  'use strict';
+  const FACE_T = [
+    [[0, 0, 1], 'translateZ(H)'], [[0, 0, -1], 'rotateY(180deg) translateZ(H)'],
+    [[1, 0, 0], 'rotateY(90deg) translateZ(H)'], [[-1, 0, 0], 'rotateY(-90deg) translateZ(H)'],
+    [[0, 1, 0], 'rotateX(90deg) translateZ(H)'], [[0, -1, 0], 'rotateX(-90deg) translateZ(H)'],
+  ];
+  // Welt-Rotation (rechtshändig, y oben) -> CSS-Rotation (y unten)
+  const CSS_SIGN = { x: -1, y: 1, z: -1 };
+
+  class View {
+    constructor(host, o = {}) {
+      this.mask = o.mask || 'full';
+      this.rx = o.rx ?? -27; this.ry = o.ry ?? -34;
+      host.innerHTML = '<div class="c3" aria-label="3D-Würfel, zum Drehen ziehen"><div class="c3-cube"></div></div>';
+      this.root = host.firstElementChild;
+      this.cubeEl = this.root.firstElementChild;
+      this.cubies = [];
+      this.busy = false;
+      this.build();
+      this.drag();
+      this.state = Cube.solved();
+      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.layout()) : null;
+      if (ro) ro.observe(this.root);
+      this.layout();
+    }
+    build() {
+      for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+        if (!x && !y && !z) continue;
+        const el = document.createElement('div');
+        el.className = 'c3-cubie';
+        const faces = [];
+        for (const [n, t] of FACE_T) {
+          const f = document.createElement('div');
+          f.className = 'c3-face';
+          f.dataset.t = t;
+          const outer = n.some((v, i) => v !== 0 && v === [x, y, z][i]);
+          let st = null;
+          if (outer) { st = document.createElement('i'); f.appendChild(st); }
+          el.appendChild(f);
+          faces.push({ n, f, st, idx: outer ? Cube.indexOf([x, y, z], n) : -1 });
+        }
+        this.cubeEl.appendChild(el);
+        this.cubies.push({ pos: [x, y, z], el, faces });
+      }
+    }
+    layout() {
+      const w = this.root.clientWidth || 240;
+      const S = Math.round(w / 4.6);
+      this.S = S;
+      for (const c of this.cubies) {
+        c.el.style.width = c.el.style.height = S + 'px';
+        c.el.style.left = c.el.style.top = (-S / 2) + 'px';
+        c.base = `translate3d(${c.pos[0] * S}px, ${-c.pos[1] * S}px, ${c.pos[2] * S}px)`;
+        c.el.style.transform = c.base;
+        for (const fc of c.faces) fc.f.style.transform = fc.f.dataset.t.replace('H', S / 2 + 'px');
+      }
+      this.applyView();
+    }
+    applyView() { this.cubeEl.style.transform = `rotateX(${this.rx}deg) rotateY(${this.ry}deg)`; }
+    drag() {
+      let p = null;
+      this.root.addEventListener('pointerdown', e => { p = [e.clientX, e.clientY, this.rx, this.ry]; this.root.setPointerCapture(e.pointerId); });
+      this.root.addEventListener('pointermove', e => {
+        if (!p) return;
+        this.ry = p[3] + (e.clientX - p[0]) * 0.5;
+        this.rx = Math.max(-85, Math.min(85, p[2] - (e.clientY - p[1]) * 0.5));
+        this.applyView();
+      });
+      const end = () => { p = null; };
+      this.root.addEventListener('pointerup', end);
+      this.root.addEventListener('pointercancel', end);
+    }
+    setState(st) { this.state = st.slice(); this.paint(); }
+    paint() {
+      for (const c of this.cubies) for (const fc of c.faces) if (fc.st) fc.st.style.background = Render.color(this.state, fc.idx, this.mask);
+    }
+    // Animiert einen Zug; danach wird der Zustand übernommen
+    animate(mv, ms = 400) {
+      if (typeof mv === 'string') mv = Cube.parse(mv)[0];
+      const [axis, layers, q] = Cube.MOVE_DEFS[mv.base];
+      const ai = Cube.AX[axis];
+      const deg = (mv.amount === 2 ? 180 : 90) * (mv.amount === 3 ? -q : q) * CSS_SIGN[axis];
+      const fn = 'rotate' + axis.toUpperCase();
+      const moving = this.cubies.filter(c => layers.includes(c.pos[ai]));
+      this.busy = true;
+      return new Promise(resolve => {
+        const reduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const dur = reduce ? 0 : ms * (mv.amount === 2 ? 1.4 : 1);
+        for (const c of moving) { c.el.style.transition = 'none'; c.el.style.transform = `${fn}(0deg) ${c.base}`; }
+        void this.cubeEl.offsetWidth;
+        for (const c of moving) {
+          c.el.style.transition = `transform ${dur}ms cubic-bezier(.45,.05,.35,1)`;
+          c.el.style.transform = `${fn}(${deg}deg) ${c.base}`;
+        }
+        setTimeout(() => {
+          for (const c of moving) { c.el.style.transition = 'none'; c.el.style.transform = c.base; }
+          this.state = Cube.applyMove(this.state, mv);
+          this.paint();
+          this.busy = false;
+          resolve();
+        }, dur + 30);
+      });
+    }
+  }
+
+  // Player: spielt einen Algorithmus ab (Play, Pause, Schritt vor/zurück, Tempo)
+  class Player {
+    constructor(host, { alg, start, mask, speed = 1, onStep } = {}) {
+      this.moves = Cube.parse(alg);
+      this.start = start || Cube.caseState(alg);
+      this.i = 0; this.playing = false; this.speed = speed; this.onStep = onStep;
+      host.innerHTML = `<div class="player stack">
+        <div class="c3host"></div>
+        <div class="moves" data-moves></div>
+        <div class="player-ctrl">
+          <button class="btn" data-a="reset" aria-label="Zum Anfang"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 6v12l-9-6z"/></svg></button>
+          <button class="btn" data-a="back" aria-label="Schritt zurück"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 6v12l-8-6zM18 6v12h-2V6z"/></svg></button>
+          <button class="btn primary" data-a="play" aria-label="Abspielen"></button>
+          <button class="btn" data-a="fwd" aria-label="Schritt vor"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6v12l8-6zM6 6v12h2V6z"/></svg></button>
+          <button class="btn" data-a="end" aria-label="Zum Ende"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 6v12l9-6z"/></svg></button>
+        </div>
+        <div class="speed"><span class="muted small">Tempo</span><div class="seg" data-speed>${[0.5, 1, 1.5, 2].map(s => `<button data-s="${s}">${String(s).replace('.', ',')}×</button>`).join('')}</div></div>
+      </div>`;
+      this.host = host;
+      this.view = new View(host.querySelector('.c3host'), { mask });
+      this.view.setState(this.start);
+      host.querySelector('.player-ctrl').addEventListener('click', e => {
+        const b = e.target.closest('[data-a]'); if (!b) return;
+        ({ reset: () => this.reset(), back: () => this.back(), play: () => this.toggle(), fwd: () => this.fwd(), end: () => this.end() })[b.dataset.a]();
+      });
+      host.querySelector('[data-speed]').addEventListener('click', e => {
+        const b = e.target.closest('[data-s]'); if (!b) return;
+        this.speed = +b.dataset.s; this.ui();
+      });
+      host.querySelector('[data-moves]').addEventListener('click', e => {
+        const b = e.target.closest('[data-i]'); if (b) this.jump(+b.dataset.i);
+      });
+      this.ui();
+    }
+    get ms() { return 420 / this.speed; }
+    ui() {
+      const m = this.host.querySelector('[data-moves]');
+      m.innerHTML = this.moves.map((mv, k) => `<button class="mv ${k < this.i ? 'done' : k === this.i ? 'now' : ''}" data-i="${k}">${Cube.moveStr(mv)}</button>`).join('');
+      const play = this.host.querySelector('[data-a=play]');
+      play.innerHTML = this.playing
+        ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>';
+      play.setAttribute('aria-label', this.playing ? 'Pause' : 'Abspielen');
+      this.host.querySelectorAll('[data-s]').forEach(b => b.classList.toggle('on', +b.dataset.s === this.speed));
+      if (this.onStep) this.onStep(this.i, this.moves.length);
+    }
+    async fwd() {
+      if (this.view.busy || this.i >= this.moves.length) return;
+      await this.view.animate(this.moves[this.i], this.ms); this.i++; this.ui();
+    }
+    async back() {
+      if (this.view.busy || this.i <= 0) return;
+      this.playing = false;
+      const mv = this.moves[this.i - 1];
+      await this.view.animate({ base: mv.base, amount: 4 - mv.amount }, this.ms); this.i--; this.ui();
+    }
+    async toggle() {
+      if (this.playing) { this.playing = false; this.ui(); return; }
+      if (this.i >= this.moves.length) this.reset();
+      this.playing = true; this.ui();
+      while (this.playing && this.i < this.moves.length) {
+        await this.view.animate(this.moves[this.i], this.ms);
+        this.i++; this.ui();
+        if (this.playing) await new Promise(r => setTimeout(r, 90 / this.speed));
+      }
+      this.playing = false; this.ui();
+    }
+    jump(k) {
+      if (this.view.busy) return;
+      this.playing = false;
+      this.i = Math.max(0, Math.min(this.moves.length, k));
+      this.view.setState(Cube.apply(this.start, this.moves.slice(0, this.i)));
+      this.ui();
+    }
+    reset() { this.jump(0); }
+    end() { this.jump(this.moves.length); }
+    stop() { this.playing = false; }
+  }
+  return { View, Player };
+})();
+</script>
+<script id="logic">
+/* ===== Logik: Leitner-System und Timer-Statistik (ohne DOM, testbar) ===== */
+const Logic = (() => {
+  'use strict';
+  const MIN = 6e4, DAY = 864e5;
+  // Wartezeit nach Box (Index = Box 1..5)
+  const INTERVALS = [0, 10 * MIN, 1 * DAY, 3 * DAY, 7 * DAY, 16 * DAY];
+  const BOXES = 5;
+
+  const newCard = now => ({ box: 1, due: now, reps: 0, hits: 0, last: null, added: now });
+
+  // grade: 'good' = sofort gewusst, 'hard' = mit Mühe, 'again' = nicht gewusst
+  function review(card, grade, now) {
+    const c = Object.assign(newCard(now), card);
+    if (grade === 'good') c.box = Math.min(BOXES, c.box + 1);
+    else if (grade === 'again') c.box = 1;
+    else c.box = Math.max(1, c.box);
+    c.due = now + INTERVALS[c.box] * (grade === 'hard' && c.box > 1 ? 0.6 : 1);
+    c.reps += 1;
+    c.hits += grade === 'good' ? 1 : grade === 'hard' ? 0.5 : 0;
+    c.last = now;
+    return c;
+  }
+  const dueIds = (cards, ids, now) => ids.filter(id => cards[id] && cards[id].due <= now).sort((a, b) => cards[a].due - cards[b].due);
+  const nextDue = (cards, ids) => ids.reduce((m, id) => cards[id] && cards[id].due < m ? cards[id].due : m, Infinity);
+  const hitRate = c => c && c.reps ? c.hits / c.reps : null;
+
+  // Timer
+  const effective = t => t.penalty === 'dnf' ? Infinity : t.ms + (t.penalty === 2 ? 2000 : 0);
+  // WCA-Mittelwert der letzten n Zeiten: beste und schlechteste fallen weg
+  function average(times, n) {
+    if (times.length < n) return null;
+    const v = times.slice(-n).map(effective).sort((a, b) => a - b);
+    const trim = Math.max(1, Math.ceil(n * 0.05));
+    const mid = v.slice(trim, n - trim);
+    if (mid.some(x => x === Infinity)) return Infinity;
+    return Math.round(mid.reduce((a, b) => a + b, 0) / mid.length);
+  }
+  const best = times => times.reduce((m, t) => Math.min(m, effective(t)), Infinity);
+  const pad = (n, l = 2) => String(n).padStart(l, '0');
+  function fmt(ms) {
+    if (ms == null) return '–';
+    if (ms === Infinity) return 'DNF';
+    const cs = Math.floor(ms / 10), s = Math.floor(cs / 100), m = Math.floor(s / 60);
+    return m ? `${m}:${pad(s % 60)}.${pad(cs % 100)}` : `${s}.${pad(cs % 100)}`;
+  }
+  return { INTERVALS, BOXES, MIN, DAY, newCard, review, dueIds, nextDue, hitRate, effective, average, best, fmt };
+})();
+</script>
+<script id="data" type="application/json">
+{
+ "version": 1,
+ "lessons": [
+  {
+   "id": "l0",
+   "nr": 0,
+   "title": "Notation & Würfel halten",
+   "short": "Notation",
+   "mask": "full",
+   "views": [
+    "iso"
+   ],
+   "goal": "Du kennst die Zugnotation und hältst den Würfel immer gleich: Gelb oben, Grün vorne.",
+   "goalAlg": "",
+   "goalViews": [
+    "iso"
+   ],
+   "intro": [
+    "Jede Seite hat einen Buchstaben: R = rechts, L = links, U = oben (up), D = unten (down), F = vorne (front), B = hinten (back).",
+    "Ein Buchstabe allein heisst: diese Seite eine Vierteldrehung im Uhrzeigersinn – so, als würdest du direkt auf diese Seite schauen.",
+    "Ein Strich (R′, geschrieben R') heisst gegen den Uhrzeigersinn. Eine 2 (R2) heisst halbe Drehung – die Richtung ist dann egal.",
+    "Halte den Würfel in diesem Kurs immer mit Gelb oben und Grün vorne. Dann ist Rot links, Orange rechts, Blau hinten und Weiss unten.",
+    "Die Mittelsteine bewegen sich bei R, L, U, D, F und B nie. Sie zeigen dir, welche Farbe auf welche Seite gehört.",
+    "Kleinbuchstaben (r, u …) drehen zwei Schichten gleichzeitig, M/E/S die mittlere Scheibe, x/y/z den ganzen Würfel. Das brauchst du erst später."
+   ],
+   "cases": [
+    {
+     "id": "n-R",
+     "name": "R",
+     "kind": "move",
+     "alg": "R",
+     "recognize": "Rechte Seite nach oben",
+     "hold": "Im Uhrzeigersinn, wenn du von rechts auf die Seite schaust. Die vordere Spalte rechts wandert nach oben."
+    },
+    {
+     "id": "n-Ri",
+     "name": "R'",
+     "kind": "move",
+     "alg": "R'",
+     "recognize": "Rechte Seite nach unten",
+     "hold": "Gegen den Uhrzeigersinn (von rechts gesehen). Die vordere Spalte rechts wandert nach unten."
+    },
+    {
+     "id": "n-L",
+     "name": "L",
+     "kind": "move",
+     "alg": "L",
+     "recognize": "Linke Seite nach unten",
+     "hold": "Im Uhrzeigersinn, wenn du von links auf die Seite schaust. Die vordere Spalte links wandert nach unten."
+    },
+    {
+     "id": "n-Li",
+     "name": "L'",
+     "kind": "move",
+     "alg": "L'",
+     "recognize": "Linke Seite nach oben",
+     "hold": "Gegen den Uhrzeigersinn (von links gesehen). Die vordere Spalte links wandert nach oben."
+    },
+    {
+     "id": "n-U",
+     "name": "U",
+     "kind": "move",
+     "alg": "U",
+     "recognize": "Obere Ebene nach links",
+     "hold": "Im Uhrzeigersinn von oben gesehen. Die vordere obere Reihe wandert nach links."
+    },
+    {
+     "id": "n-Ui",
+     "name": "U'",
+     "kind": "move",
+     "alg": "U'",
+     "recognize": "Obere Ebene nach rechts",
+     "hold": "Gegen den Uhrzeigersinn von oben gesehen. Die vordere obere Reihe wandert nach rechts."
+    },
+    {
+     "id": "n-D",
+     "name": "D",
+     "kind": "move",
+     "alg": "D",
+     "recognize": "Untere Ebene nach rechts",
+     "hold": "Im Uhrzeigersinn von unten gesehen. Die vordere untere Reihe wandert nach rechts."
+    },
+    {
+     "id": "n-Di",
+     "name": "D'",
+     "kind": "move",
+     "alg": "D'",
+     "recognize": "Untere Ebene nach links",
+     "hold": "Gegen den Uhrzeigersinn von unten gesehen. Die vordere untere Reihe wandert nach links."
+    },
+    {
+     "id": "n-F",
+     "name": "F",
+     "kind": "move",
+     "alg": "F",
+     "recognize": "Vorderseite im Uhrzeigersinn",
+     "hold": "Du schaust auf die Vorderseite und drehst sie wie einen Uhrzeiger. Oben wandert nach rechts."
+    },
+    {
+     "id": "n-Fi",
+     "name": "F'",
+     "kind": "move",
+     "alg": "F'",
+     "recognize": "Vorderseite gegen den Uhrzeigersinn",
+     "hold": "Du schaust auf die Vorderseite und drehst sie gegen den Uhrzeiger. Oben wandert nach links."
+    },
+    {
+     "id": "n-B",
+     "name": "B",
+     "kind": "move",
+     "alg": "B",
+     "recognize": "Rückseite im Uhrzeigersinn (von hinten)",
+     "hold": "Von hinten gesehen im Uhrzeigersinn. Von vorne betrachtet wandert die obere Reihe hinten nach links."
+    },
+    {
+     "id": "n-Bi",
+     "name": "B'",
+     "kind": "move",
+     "alg": "B'",
+     "recognize": "Rückseite gegen den Uhrzeigersinn (von hinten)",
+     "hold": "Von hinten gesehen gegen den Uhrzeiger. Von vorne betrachtet wandert die obere Reihe hinten nach rechts."
+    }
+   ]
+  },
+  {
+   "id": "l1",
+   "nr": 1,
+   "title": "Weisses Kreuz",
+   "short": "Kreuz",
+   "mask": "cross",
+   "views": [
+    "iso",
+    "isoD"
+   ],
+   "goalViews": [
+    "isoD"
+   ],
+   "goal": "Unten entsteht ein weisses Kreuz. Jede weisse Kante passt mit ihrer zweiten Farbe zur Mitte ihrer Seite.",
+   "intro": [
+    "Halte Weiss unten und Gelb oben. Das Kreuz baust du Kante für Kante.",
+    "Suche eine Kante mit Weiss, am einfachsten in der oberen Ebene. Ihre zweite Farbe sagt dir, zu welcher Mitte sie gehört.",
+    "Drehe den ganzen Würfel so, dass die passende Mitte vorne ist. Mit U bringst du die Kante nach vorne oben.",
+    "Kippe den Würfel ab und zu, um unten nachzuschauen. Die schon fertigen Kanten dürfen nicht verloren gehen."
+   ],
+   "tip": "Liegt eine weisse Kante unten am falschen Platz: Halte sie vorne und mach F2 – dann ist sie oben.",
+   "cases": [
+    {
+     "id": "kr-oben",
+     "name": "Weiss zeigt nach oben",
+     "alg": "F2",
+     "recognize": "Die Kante liegt oben vorne, Weiss zeigt nach oben. Die vordere Farbe der Kante passt zur vorderen Mitte.",
+     "hold": "Drehe U, bis die Kante über der passenden Mitte steht, und halte diese Seite vorne."
+    },
+    {
+     "id": "kr-vorne",
+     "name": "Weiss zeigt nach vorne",
+     "alg": "U' R' F R",
+     "recognize": "Die Kante liegt oben vorne, aber Weiss zeigt nach vorne. Die Farbe oben auf der Kante passt zur vorderen Mitte.",
+     "hold": "Vorne ist die Mitte mit der Farbe, die oben auf der Kante liegt."
+    },
+    {
+     "id": "kr-mitte",
+     "name": "Kante in der mittleren Ebene",
+     "alg": "F",
+     "recognize": "Die Kante steckt vorne rechts in der mittleren Ebene. Weiss zeigt nach rechts, die andere Farbe passt zur vorderen Mitte.",
+     "hold": "Steckt sie vorne links (Weiss zeigt nach links), nimm F' statt F."
+    },
+    {
+     "id": "kr-verkehrt",
+     "name": "Kante unten verkehrt",
+     "alg": "F' D R' D'",
+     "recognize": "Die Kante sitzt schon unten vorne, aber Weiss zeigt nach vorne statt nach unten.",
+     "hold": "Halte die verkehrte Kante vorne. D verdreht das Kreuz kurz, D' dreht es wieder zurück."
+    }
+   ]
+  },
+  {
+   "id": "l2",
+   "nr": 2,
+   "title": "Weisse Ecken",
+   "short": "Ecken",
+   "mask": "firstLayer",
+   "views": [
+    "iso",
+    "isoD"
+   ],
+   "goalViews": [
+    "isoD",
+    "iso"
+   ],
+   "goal": "Die ganze weisse Seite ist fertig, und die erste Ebene passt rundherum zu den Mitten.",
+   "intro": [
+    "Suche oben eine Ecke mit Weiss. Ihre zwei anderen Farben zeigen, wohin sie gehört: zwischen die Mitten dieser beiden Farben.",
+    "Drehe U, bis die Ecke genau über ihrem Platz steht, und halte den Würfel so, dass dieser Platz vorne rechts unten ist.",
+    "Jetzt wiederholst du R U R' U' – je nach Richtung des weissen Stickers 1-, 3- oder 5-mal. Die Ecke findet ihren Platz von selbst."
+   ],
+   "tip": "Sitzt eine weisse Ecke unten am falschen Platz: Halte sie vorne rechts und mach einmal R U R' U' – dann ist sie oben.",
+   "cases": [
+    {
+     "id": "ec-rechts",
+     "name": "Weiss zeigt nach rechts",
+     "alg": "R U R' U'",
+     "recognize": "Die Ecke steht oben vorne rechts über ihrem Platz, Weiss zeigt nach rechts.",
+     "hold": "Platz der Ecke vorne rechts unten. 1× R U R' U'."
+    },
+    {
+     "id": "ec-oben",
+     "name": "Weiss zeigt nach oben",
+     "alg": "(R U R' U')3",
+     "recognize": "Die Ecke steht oben vorne rechts über ihrem Platz, Weiss zeigt nach oben.",
+     "hold": "Platz der Ecke vorne rechts unten. 3× R U R' U'."
+    },
+    {
+     "id": "ec-vorne",
+     "name": "Weiss zeigt nach vorne",
+     "alg": "(R U R' U')5",
+     "recognize": "Die Ecke steht oben vorne rechts über ihrem Platz, Weiss zeigt nach vorne.",
+     "hold": "Platz der Ecke vorne rechts unten. 5× R U R' U'."
+    },
+    {
+     "id": "ec-unten-r",
+     "name": "Ecke unten verdreht (Weiss rechts)",
+     "alg": "(R U R' U')2",
+     "recognize": "Die Ecke sitzt schon an ihrem Platz vorne rechts unten, aber Weiss zeigt nach rechts.",
+     "hold": "Verdrehte Ecke vorne rechts unten. 2× R U R' U'."
+    },
+    {
+     "id": "ec-unten-v",
+     "name": "Ecke unten verdreht (Weiss vorne)",
+     "alg": "(R U R' U')4",
+     "recognize": "Die Ecke sitzt schon an ihrem Platz vorne rechts unten, aber Weiss zeigt nach vorne.",
+     "hold": "Verdrehte Ecke vorne rechts unten. 4× R U R' U'."
+    }
+   ]
+  },
+  {
+   "id": "l3",
+   "nr": 3,
+   "title": "Zweite Ebene",
+   "short": "2. Ebene",
+   "mask": "f2l",
+   "views": [
+    "iso"
+   ],
+   "goalViews": [
+    "iso"
+   ],
+   "goal": "Die unteren zwei Ebenen sind fertig. Nur die gelbe Ebene oben fehlt noch.",
+   "intro": [
+    "Weiss bleibt unten, Gelb oben. Suche oben eine Kante ohne Gelb.",
+    "Drehe U, bis die vordere Farbe der Kante zur vorderen Mitte passt – es entsteht ein senkrechter Strich.",
+    "Die obere Farbe der Kante zeigt dir die Richtung: Passt sie zur rechten Mitte, muss die Kante nach rechts, sonst nach links."
+   ],
+   "tip": "Findest du oben keine Kante ohne Gelb, steckt eine Kante verkehrt in der mittleren Ebene: Hole sie mit dem Rechts-Algorithmus heraus.",
+   "cases": [
+    {
+     "id": "zw-rechts",
+     "name": "Kante nach rechts",
+     "alg": "U R U' R' U' F' U F",
+     "recognize": "Kante oben vorne. Die vordere Farbe passt zur vorderen Mitte, die obere Farbe zur rechten Mitte.",
+     "hold": "Strich vorne, Ziel vorne rechts."
+    },
+    {
+     "id": "zw-links",
+     "name": "Kante nach links",
+     "alg": "U' L' U L U F U' F'",
+     "recognize": "Kante oben vorne. Die vordere Farbe passt zur vorderen Mitte, die obere Farbe zur linken Mitte.",
+     "hold": "Strich vorne, Ziel vorne links."
+    },
+    {
+     "id": "zw-verkehrt",
+     "name": "Kante verkehrt eingesetzt",
+     "alg": "(U R U' R' U' F' U F) U2 (U R U' R' U' F' U F)",
+     "recognize": "Die Kante sitzt vorne rechts in der mittleren Ebene, aber ihre Farben sind vertauscht.",
+     "hold": "Verkehrte Kante vorne rechts. Der erste Teil holt sie heraus, nach U2 setzt der zweite sie richtig ein."
+    }
+   ]
+  },
+  {
+   "id": "l4",
+   "nr": 4,
+   "title": "Gelbes Kreuz",
+   "short": "Gelbes Kreuz",
+   "mask": "llEdges",
+   "views": [
+    "top",
+    "iso"
+   ],
+   "goalViews": [
+    "top",
+    "iso"
+   ],
+   "goal": "Oben entsteht ein gelbes Kreuz. Die gelben Ecken sind noch egal.",
+   "intro": [
+    "Schau nur auf die vier Kanten oben – die Mitte ist immer gelb. Es gibt drei Bilder: Punkt, L-Form oder Linie.",
+    "Der Grund-Algorithmus ist F R U R' U' F'. Die Variante F U R U' R' F' löst die L-Form direkt."
+   ],
+   "cases": [
+    {
+     "id": "gk-linie",
+     "name": "Linie",
+     "alg": "F R U R' U' F'",
+     "recognize": "Zwei gegenüberliegende Kanten sind gelb und bilden mit der Mitte eine Linie.",
+     "hold": "Halte die Linie waagrecht, also von links nach rechts."
+    },
+    {
+     "id": "gk-l",
+     "name": "L-Form",
+     "alg": "F U R U' R' F'",
+     "recognize": "Zwei benachbarte Kanten sind gelb und bilden mit der Mitte ein kleines L.",
+     "hold": "Halte das L hinten links: gelbe Kanten hinten und links."
+    },
+    {
+     "id": "gk-punkt",
+     "name": "Punkt",
+     "alg": "(F R U R' U' F') U2 (F U R U' R' F')",
+     "recognize": "Nur die Mitte ist gelb, keine Kante oben.",
+     "hold": "Beliebig halten: zuerst der Linien-Algorithmus, dann U2, dann der L-Algorithmus."
+    }
+   ]
+  },
+  {
+   "id": "l5",
+   "nr": 5,
+   "title": "Gelbe Fläche",
+   "short": "Gelbe Fläche",
+   "mask": "oll",
+   "views": [
+    "top",
+    "iso"
+   ],
+   "goalViews": [
+    "top",
+    "iso"
+   ],
+   "goal": "Die ganze obere Seite ist gelb.",
+   "intro": [
+    "Der wichtigste Algorithmus heisst «Sune»: R U R' U R U2 R'. Er dreht drei Ecken auf einmal.",
+    "Zähle zuerst, wie viele Ecken oben schon gelb sind: genau eine (Fisch), keine oder zwei. Achte dann auf die Seiten: Wohin zeigen die gelben Sticker der Ecken?",
+    "Alle Fälle lassen sich mit dem Sune lösen. Zwischen den Wiederholungen drehst du manchmal U."
+   ],
+   "cases": [
+    {
+     "id": "gf-sune",
+     "name": "Fisch (Sune)",
+     "alg": "R U R' U R U2 R'",
+     "recognize": "Genau eine Ecke ist oben gelb. Die gelben Sticker der anderen Ecken zeigen nach vorne, rechts und hinten.",
+     "hold": "Gelbe Ecke vorne links."
+    },
+    {
+     "id": "gf-antisune",
+     "name": "Fisch andersrum (Antisune)",
+     "alg": "R U2 R' U' R U' R'",
+     "recognize": "Genau eine Ecke ist oben gelb. Vorne links zeigt Gelb nach vorne, vorne rechts nach rechts.",
+     "hold": "Gelbe Ecke hinten rechts."
+    },
+    {
+     "id": "gf-h",
+     "name": "Keine Ecke – zwei Paare (H)",
+     "alg": "(R U R' U R U2 R') (R U R' U R U2 R')",
+     "recognize": "Keine Ecke ist oben gelb. Je zwei gelbe Sticker zeigen nach rechts und nach links.",
+     "hold": "Gelbe Paare rechts und links."
+    },
+    {
+     "id": "gf-pi",
+     "name": "Keine Ecke – ein Paar (Pi)",
+     "alg": "(R U R' U R U2 R') U' (R U R' U R U2 R')",
+     "recognize": "Keine Ecke ist oben gelb. Nur auf einer Seite zeigen zwei gelbe Sticker in dieselbe Richtung.",
+     "hold": "Gelbes Paar links."
+    },
+    {
+     "id": "gf-scheinw",
+     "name": "Zwei Ecken – Scheinwerfer",
+     "alg": "(R U R' U R U2 R') U' (R U R' U R U2 R') U2 (R U R' U R U2 R')",
+     "recognize": "Zwei benachbarte Ecken sind oben gelb. Die anderen zwei zeigen ihr Gelb zur gleichen Seite.",
+     "hold": "Gelbe Ecken hinten, vorne zeigen zwei gelbe Sticker nach vorne."
+    },
+    {
+     "id": "gf-t",
+     "name": "Zwei Ecken – nebeneinander (T)",
+     "alg": "(R U R' U R U2 R') U (R U R' U R U2 R') U2 (R U R' U R U2 R')",
+     "recognize": "Zwei benachbarte Ecken sind oben gelb. Die anderen zwei zeigen ihr Gelb in entgegengesetzte Richtungen.",
+     "hold": "Gelbe Ecken rechts; links zeigt Gelb nach vorne und nach hinten."
+    },
+    {
+     "id": "gf-diag",
+     "name": "Zwei Ecken – diagonal",
+     "alg": "(R U R' U R U2 R') (R U R' U R U2 R') (R U R' U R U2 R')",
+     "recognize": "Zwei diagonal gegenüberliegende Ecken sind oben gelb.",
+     "hold": "Gelbe Ecken hinten links und vorne rechts."
+    }
+   ]
+  },
+  {
+   "id": "l6",
+   "nr": 6,
+   "title": "Gelbe Ecken positionieren",
+   "short": "Ecken setzen",
+   "mask": "llCorners",
+   "views": [
+    "top",
+    "iso"
+   ],
+   "goalViews": [
+    "top",
+    "iso"
+   ],
+   "goal": "Alle gelben Ecken stehen am richtigen Platz: Jede Ecke passt zu den Mitten ihrer zwei Seitenfarben. Die Kanten dürfen noch falsch sein.",
+   "intro": [
+    "Schau auf die Seitenfarben der Ecken in der oberen Ebene.",
+    "Haben zwei Ecken auf einer Seite dieselbe Farbe, heissen sie «Scheinwerfer». Diese zwei Ecken stimmen zueinander.",
+    "Dreh nach dem Algorithmus mit U, bis die Ecken zu den Mitten passen."
+   ],
+   "cases": [
+    {
+     "id": "ge-scheinw",
+     "name": "Scheinwerfer auf einer Seite",
+     "alg": "R' F R' B2 R F' R' B2 R2",
+     "recognize": "Eine Seite hat zwei Ecksticker mit derselben Farbe (Scheinwerfer). Die anderen Ecken müssen tauschen.",
+     "hold": "Scheinwerfer hinten. Danach mit U ausrichten."
+    },
+    {
+     "id": "ge-keine",
+     "name": "Keine Scheinwerfer",
+     "alg": "(R' F R' B2 R F' R' B2 R2) U (R' F R' B2 R F' R' B2 R2)",
+     "recognize": "Keine Seite hat Scheinwerfer: Zwei diagonale Ecken müssen tauschen.",
+     "hold": "Beliebig halten. Nach dem ersten Durchgang gibt es Scheinwerfer: U, damit sie hinten sind, dann nochmals."
+    }
+   ]
+  },
+  {
+   "id": "l7",
+   "nr": 7,
+   "title": "Gelbe Kanten positionieren",
+   "short": "Kanten setzen",
+   "mask": "pll",
+   "views": [
+    "top",
+    "iso"
+   ],
+   "goalViews": [
+    "iso"
+   ],
+   "goal": "Alle Teile sind am richtigen Platz – der Würfel ist gelöst!",
+   "intro": [
+    "Die Ecken stimmen schon. Suche eine Seite, die in der oberen Ebene ganz einfarbig ist: Dort passt die Kante bereits.",
+    "Halte diese fertige Seite hinten. Dann schau, in welche Richtung die anderen drei Kanten wandern müssen.",
+    "Stimmt keine Kante, führst du einen der Algorithmen einmal aus – danach hast du eine fertige Seite."
+   ],
+   "cases": [
+    {
+     "id": "gk2-gegen",
+     "name": "Kanten gegen den Uhrzeigersinn (Ua)",
+     "alg": "R U' R U R U R U' R' U' R2",
+     "recognize": "Hinten ist eine Seite fertig. Die vordere Kante gehört nach rechts, die rechte nach links, die linke nach vorne.",
+     "hold": "Fertige Seite hinten."
+    },
+    {
+     "id": "gk2-mit",
+     "name": "Kanten im Uhrzeigersinn (Ub)",
+     "alg": "R2 U R U R' U' R' U' R' U R'",
+     "recognize": "Hinten ist eine Seite fertig. Die vordere Kante gehört nach links, die linke nach rechts, die rechte nach vorne.",
+     "hold": "Fertige Seite hinten."
+    },
+    {
+     "id": "gk2-gegenueber",
+     "name": "Keine Kante – gegenüber (H)",
+     "alg": "(R U' R U R U R U' R' U' R2) U (R U' R U R U R U' R' U' R2) U'",
+     "recognize": "Keine Seite ist fertig. Gegenüberliegende Kanten müssen tauschen: Jede Seite zeigt in der Mitte die Farbe der Gegenseite.",
+     "hold": "Beliebig halten."
+    },
+    {
+     "id": "gk2-nachbar",
+     "name": "Keine Kante – benachbart (Z)",
+     "alg": "(R U' R U R U R U' R' U' R2) U2 (R2 U R U R' U' R' U' R' U R') U2",
+     "recognize": "Keine Seite ist fertig. Benachbarte Kanten müssen tauschen.",
+     "hold": "Halte so, dass die Kanten vorne/links und hinten/rechts tauschen."
+    }
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "id": "beginner",
+   "name": "Anfänger",
+   "fromLessons": true,
+   "description": "Alle Fälle aus dem Lernpfad."
+  },
+  {
+   "id": "pll",
+   "name": "PLL",
+   "full": "Permutation of the Last Layer",
+   "size": 21,
+   "mask": "pll",
+   "views": [
+    "top"
+   ],
+   "arrows": true,
+   "description": "21 Fälle: Die gelbe Seite ist fertig, die Teile der oberen Ebene werden an ihren Platz gebracht.",
+   "cases": [
+    {
+     "id": "pll-Aa",
+     "name": "Aa-Perm",
+     "short": "Aa",
+     "group": "Nur Ecken",
+     "alg": "x R' U R' D2 R U' R' D2 R2 x'",
+     "auf": "",
+     "recognize": "Nur drei Ecken wandern, alle Kanten stimmen. Scheinwerfer auf einer Seite."
+    },
+    {
+     "id": "pll-Ab",
+     "name": "Ab-Perm",
+     "short": "Ab",
+     "group": "Nur Ecken",
+     "alg": "x R2 D2 R U R' D2 R U' R x'",
+     "auf": "",
+     "recognize": "Nur drei Ecken wandern, alle Kanten stimmen. Scheinwerfer auf einer Seite."
+    },
+    {
+     "id": "pll-E",
+     "name": "E-Perm",
+     "short": "E",
+     "group": "Nur Ecken",
+     "alg": "x' R U' R' D R U R' D' R U R' D R U' R' D' x",
+     "auf": "",
+     "recognize": "Nur Ecken, keine Scheinwerfer: Je zwei Ecken tauschen."
+    },
+    {
+     "id": "pll-F",
+     "name": "F-Perm",
+     "short": "F",
+     "group": "Nachbar-Tausch",
+     "alg": "R' U' F' R U R' U' R' F R2 U' R' U' R U R' U R",
+     "auf": "",
+     "recognize": "Auf einer Seite ein Dreier-Balken, daneben Scheinwerfer mit fremder Kante."
+    },
+    {
+     "id": "pll-Ga",
+     "name": "Ga-Perm",
+     "short": "Ga",
+     "group": "G-Perms",
+     "alg": "R2 U R' U R' U' R U' R2 U' D R' U R D'",
+     "auf": "",
+     "recognize": "Scheinwerfer und ein Zweier-Block, drei Kanten wandern."
+    },
+    {
+     "id": "pll-Gb",
+     "name": "Gb-Perm",
+     "short": "Gb",
+     "group": "G-Perms",
+     "alg": "R' U' R U D' R2 U R' U R U' R U' R2 D",
+     "auf": "",
+     "recognize": "Scheinwerfer und ein Zweier-Block, drei Kanten wandern."
+    },
+    {
+     "id": "pll-Gc",
+     "name": "Gc-Perm",
+     "short": "Gc",
+     "group": "G-Perms",
+     "alg": "R2 U' R U' R U R' U R2 U D' R U' R' D",
+     "auf": "",
+     "recognize": "Scheinwerfer und ein Zweier-Block, drei Kanten wandern."
+    },
+    {
+     "id": "pll-Gd",
+     "name": "Gd-Perm",
+     "short": "Gd",
+     "group": "G-Perms",
+     "alg": "R U R' U' D R2 U' R U' R' U R' U R2 D'",
+     "auf": "",
+     "recognize": "Scheinwerfer und ein Zweier-Block, drei Kanten wandern."
+    },
+    {
+     "id": "pll-H",
+     "name": "H-Perm",
+     "short": "H",
+     "group": "Nur Kanten",
+     "alg": "M2 U M2 U2 M2 U M2",
+     "auf": "",
+     "recognize": "Gegenüberliegende Kanten tauschen. Jede Seite zeigt in der Mitte die Gegenfarbe."
+    },
+    {
+     "id": "pll-Ja",
+     "name": "Ja-Perm",
+     "short": "Ja",
+     "group": "Nachbar-Tausch",
+     "alg": "L' U' L F L' U' L U L F' L2 U L",
+     "auf": "U",
+     "recognize": "Ein Zweier-Block und daneben ein Dreier-Balken."
+    },
+    {
+     "id": "pll-Jb",
+     "name": "Jb-Perm",
+     "short": "Jb",
+     "group": "Nachbar-Tausch",
+     "alg": "R U R' F' R U R' U' R' F R2 U' R'",
+     "auf": "U'",
+     "recognize": "Ein Zweier-Block und daneben ein Dreier-Balken."
+    },
+    {
+     "id": "pll-Na",
+     "name": "Na-Perm",
+     "short": "Na",
+     "group": "Diagonal-Tausch",
+     "alg": "R U R' U R U R' F' R U R' U' R' F R2 U' R' U2 R U' R'",
+     "auf": "",
+     "recognize": "Diagonaler Tausch, zwei Dreier-Balken auf gegenüberliegenden Seiten."
+    },
+    {
+     "id": "pll-Nb",
+     "name": "Nb-Perm",
+     "short": "Nb",
+     "group": "Diagonal-Tausch",
+     "alg": "R' U R U' R' F' U' F R U R' F R' F' R U' R",
+     "auf": "",
+     "recognize": "Diagonaler Tausch, zwei Dreier-Balken auf gegenüberliegenden Seiten."
+    },
+    {
+     "id": "pll-Ra",
+     "name": "Ra-Perm",
+     "short": "Ra",
+     "group": "Nachbar-Tausch",
+     "alg": "R U' R' U' R U R D R' U' R D' R' U2 R'",
+     "auf": "U'",
+     "recognize": "Scheinwerfer mit einer unpassenden Kante dazwischen, daneben ein Zweier-Block."
+    },
+    {
+     "id": "pll-Rb",
+     "name": "Rb-Perm",
+     "short": "Rb",
+     "group": "Nachbar-Tausch",
+     "alg": "R2 F R U R U' R' F' R U2 R' U2 R",
+     "auf": "U",
+     "recognize": "Scheinwerfer mit einer unpassenden Kante dazwischen, daneben ein Zweier-Block."
+    },
+    {
+     "id": "pll-T",
+     "name": "T-Perm",
+     "short": "T",
+     "group": "Nachbar-Tausch",
+     "alg": "R U R' U' R' F R2 U' R' U' R U R' F'",
+     "auf": "",
+     "recognize": "Scheinwerfer auf einer Seite, gegenüber ein dreifarbiges Muster mit Tausch links/rechts."
+    },
+    {
+     "id": "pll-Ua",
+     "name": "Ua-Perm",
+     "short": "Ua",
+     "group": "Nur Kanten",
+     "alg": "M2 U M U2 M' U M2",
+     "auf": "",
+     "recognize": "Drei Kanten wandern, eine Seite ist komplett fertig."
+    },
+    {
+     "id": "pll-Ub",
+     "name": "Ub-Perm",
+     "short": "Ub",
+     "group": "Nur Kanten",
+     "alg": "M2 U' M U2 M' U' M2",
+     "auf": "",
+     "recognize": "Drei Kanten wandern, eine Seite ist komplett fertig."
+    },
+    {
+     "id": "pll-V",
+     "name": "V-Perm",
+     "short": "V",
+     "group": "Diagonal-Tausch",
+     "alg": "R' U R' U' R D' R' D R' U D' R2 U' R2 D R2",
+     "auf": "",
+     "recognize": "Diagonaler Eckentausch, ein Zweier-Block an einer Ecke."
+    },
+    {
+     "id": "pll-Y",
+     "name": "Y-Perm",
+     "short": "Y",
+     "group": "Diagonal-Tausch",
+     "alg": "F R U' R' U' R U R' F' R U R' U' R' F R F'",
+     "auf": "",
+     "recognize": "Diagonaler Eckentausch, zwei Zweier-Blöcke über Eck."
+    },
+    {
+     "id": "pll-Z",
+     "name": "Z-Perm",
+     "short": "Z",
+     "group": "Nur Kanten",
+     "alg": "M' U M2 U M2 U M' U2 M2",
+     "auf": "U'",
+     "recognize": "Benachbarte Kanten tauschen paarweise."
+    }
+   ]
+  },
+  {
+   "id": "oll",
+   "name": "OLL",
+   "full": "Orientation of the Last Layer",
+   "size": 57,
+   "mask": "oll",
+   "views": [
+    "top"
+   ],
+   "description": "57 Fälle: Die erste und zweite Ebene ist fertig, die obere Seite wird in einem Schritt gelb.",
+   "cases": [
+    {
+     "id": "oll-1",
+     "name": "OLL 1",
+     "short": "1",
+     "group": "Punkt",
+     "alg": "R U2 R2 F R F' U2 R' F R F'",
+     "recognize": "Gruppe: Punkt."
+    },
+    {
+     "id": "oll-2",
+     "name": "OLL 2",
+     "short": "2",
+     "group": "Punkt",
+     "alg": "F R U R' U' F' f R U R' U' f'",
+     "recognize": "Gruppe: Punkt."
+    },
+    {
+     "id": "oll-3",
+     "name": "OLL 3",
+     "short": "3",
+     "group": "Punkt",
+     "alg": "f R U R' U' f' U' F R U R' U' F'",
+     "recognize": "Gruppe: Punkt."
+    },
+    {
+     "id": "oll-4",
+     "name": "OLL 4",
+     "short": "4",
+     "group": "Punkt",
+     "alg": "f R U R' U' f' U F R U R' U' F'",
+     "recognize": "Gruppe: Punkt."
+    },
+    {
+     "id": "oll-5",
+     "name": "OLL 5",
+     "short": "5",
+     "group": "Quadrat",
+     "alg": "r' U2 R U R' U r",
+     "recognize": "Gruppe: Quadrat."
+    },
+    {
+     "id": "oll-6",
+     "name": "OLL 6",
+     "short": "6",
+     "group": "Quadrat",
+     "alg": "r U2 R' U' R U' r'",
+     "recognize": "Gruppe: Quadrat."
+    },
+    {
+     "id": "oll-7",
+     "name": "OLL 7",
+     "short": "7",
+     "group": "Kleiner Blitz",
+     "alg": "r U R' U R U2 r'",
+     "recognize": "Gruppe: Kleiner Blitz."
+    },
+    {
+     "id": "oll-8",
+     "name": "OLL 8",
+     "short": "8",
+     "group": "Kleiner Blitz",
+     "alg": "l' U' L U' L' U2 l",
+     "recognize": "Gruppe: Kleiner Blitz."
+    },
+    {
+     "id": "oll-9",
+     "name": "OLL 9",
+     "short": "9",
+     "group": "Fisch",
+     "alg": "R U R' U' R' F R2 U R' U' F'",
+     "recognize": "Gruppe: Fisch."
+    },
+    {
+     "id": "oll-10",
+     "name": "OLL 10",
+     "short": "10",
+     "group": "Fisch",
+     "alg": "R U R' U R' F R F' R U2 R'",
+     "recognize": "Gruppe: Fisch."
+    },
+    {
+     "id": "oll-11",
+     "name": "OLL 11",
+     "short": "11",
+     "group": "Kleiner Blitz",
+     "alg": "r U R' U R' F R F' R U2 r'",
+     "recognize": "Gruppe: Kleiner Blitz."
+    },
+    {
+     "id": "oll-12",
+     "name": "OLL 12",
+     "short": "12",
+     "group": "Kleiner Blitz",
+     "alg": "M' R' U' R U' R' U2 R U' R r'",
+     "recognize": "Gruppe: Kleiner Blitz."
+    },
+    {
+     "id": "oll-13",
+     "name": "OLL 13",
+     "short": "13",
+     "group": "Springer",
+     "alg": "F U R U' R2 F' R U R U' R'",
+     "recognize": "Gruppe: Springer."
+    },
+    {
+     "id": "oll-14",
+     "name": "OLL 14",
+     "short": "14",
+     "group": "Springer",
+     "alg": "R' F R U R' F' R F U' F'",
+     "recognize": "Gruppe: Springer."
+    },
+    {
+     "id": "oll-15",
+     "name": "OLL 15",
+     "short": "15",
+     "group": "Springer",
+     "alg": "r' U' r R' U' R U r' U r",
+     "recognize": "Gruppe: Springer."
+    },
+    {
+     "id": "oll-16",
+     "name": "OLL 16",
+     "short": "16",
+     "group": "Springer",
+     "alg": "r U r' R U R' U' r U' r'",
+     "recognize": "Gruppe: Springer."
+    },
+    {
+     "id": "oll-17",
+     "name": "OLL 17",
+     "short": "17",
+     "group": "Punkt",
+     "alg": "R U R' U R' F R F' U2 R' F R F'",
+     "recognize": "Gruppe: Punkt."
+    },
+    {
+     "id": "oll-18",
+     "name": "OLL 18",
+     "short": "18",
+     "group": "Punkt",
+     "alg": "r U R' U R U2 r2 U' R U' R' U2 r",
+     "recognize": "Gruppe: Punkt."
+    },
+    {
+     "id": "oll-19",
+     "name": "OLL 19",
+     "short": "19",
+     "group": "Punkt",
+     "alg": "M U R U R' U' M' R' F R F'",
+     "recognize": "Gruppe: Punkt."
+    },
+    {
+     "id": "oll-20",
+     "name": "OLL 20",
+     "short": "20",
+     "group": "Punkt",
+     "alg": "r U R' U' M2 U R U' R' U' M'",
+     "recognize": "Gruppe: Punkt."
+    },
+    {
+     "id": "oll-21",
+     "name": "OLL 21 – H",
+     "short": "21",
+     "group": "Kreuz (OCLL)",
+     "alg": "R U2 R' U' R U R' U' R U' R'",
+     "recognize": "Gruppe: Kreuz (OCLL)."
+    },
+    {
+     "id": "oll-22",
+     "name": "OLL 22 – Pi",
+     "short": "22",
+     "group": "Kreuz (OCLL)",
+     "alg": "R U2 R2 U' R2 U' R2 U2 R",
+     "recognize": "Gruppe: Kreuz (OCLL)."
+    },
+    {
+     "id": "oll-23",
+     "name": "OLL 23 – Scheinwerfer",
+     "short": "23",
+     "group": "Kreuz (OCLL)",
+     "alg": "R2 D' R U2 R' D R U2 R",
+     "recognize": "Gruppe: Kreuz (OCLL)."
+    },
+    {
+     "id": "oll-24",
+     "name": "OLL 24 – T (Chamäleon)",
+     "short": "24",
+     "group": "Kreuz (OCLL)",
+     "alg": "r U R' U' r' F R F'",
+     "recognize": "Gruppe: Kreuz (OCLL)."
+    },
+    {
+     "id": "oll-25",
+     "name": "OLL 25 – Fliege",
+     "short": "25",
+     "group": "Kreuz (OCLL)",
+     "alg": "F' r U R' U' r' F R",
+     "recognize": "Gruppe: Kreuz (OCLL)."
+    },
+    {
+     "id": "oll-26",
+     "name": "OLL 26 – Antisune",
+     "short": "26",
+     "group": "Kreuz (OCLL)",
+     "alg": "R U2 R' U' R U' R'",
+     "recognize": "Gruppe: Kreuz (OCLL)."
+    },
+    {
+     "id": "oll-27",
+     "name": "OLL 27 – Sune",
+     "short": "27",
+     "group": "Kreuz (OCLL)",
+     "alg": "R U R' U R U2 R'",
+     "recognize": "Gruppe: Kreuz (OCLL)."
+    },
+    {
+     "id": "oll-28",
+     "name": "OLL 28 – Stealth",
+     "short": "28",
+     "group": "Ecken orientiert",
+     "alg": "r U R' U' r' R U R U' R'",
+     "recognize": "Gruppe: Ecken orientiert."
+    },
+    {
+     "id": "oll-29",
+     "name": "OLL 29",
+     "short": "29",
+     "group": "Awkward",
+     "alg": "R U R' U' R U' R' F' U' F R U R'",
+     "recognize": "Gruppe: Awkward."
+    },
+    {
+     "id": "oll-30",
+     "name": "OLL 30",
+     "short": "30",
+     "group": "Awkward",
+     "alg": "F R' F R2 U' R' U' R U R' F2",
+     "recognize": "Gruppe: Awkward."
+    },
+    {
+     "id": "oll-31",
+     "name": "OLL 31",
+     "short": "31",
+     "group": "P-Form",
+     "alg": "R' U' F U R U' R' F' R",
+     "recognize": "Gruppe: P-Form."
+    },
+    {
+     "id": "oll-32",
+     "name": "OLL 32",
+     "short": "32",
+     "group": "P-Form",
+     "alg": "L U F' U' L' U L F L'",
+     "recognize": "Gruppe: P-Form."
+    },
+    {
+     "id": "oll-33",
+     "name": "OLL 33 – T",
+     "short": "33",
+     "group": "T-Form",
+     "alg": "R U R' U' R' F R F'",
+     "recognize": "Gruppe: T-Form."
+    },
+    {
+     "id": "oll-34",
+     "name": "OLL 34",
+     "short": "34",
+     "group": "C-Form",
+     "alg": "R U R2 U' R' F R U R U' F'",
+     "recognize": "Gruppe: C-Form."
+    },
+    {
+     "id": "oll-35",
+     "name": "OLL 35",
+     "short": "35",
+     "group": "Fisch",
+     "alg": "R U2 R2 F R F' R U2 R'",
+     "recognize": "Gruppe: Fisch."
+    },
+    {
+     "id": "oll-36",
+     "name": "OLL 36",
+     "short": "36",
+     "group": "W-Form",
+     "alg": "L' U' L U' L' U L U L F' L' F",
+     "recognize": "Gruppe: W-Form."
+    },
+    {
+     "id": "oll-37",
+     "name": "OLL 37",
+     "short": "37",
+     "group": "Fisch",
+     "alg": "F R' F' R U R U' R'",
+     "recognize": "Gruppe: Fisch."
+    },
+    {
+     "id": "oll-38",
+     "name": "OLL 38",
+     "short": "38",
+     "group": "W-Form",
+     "alg": "R U R' U R U' R' U' R' F R F'",
+     "recognize": "Gruppe: W-Form."
+    },
+    {
+     "id": "oll-39",
+     "name": "OLL 39",
+     "short": "39",
+     "group": "Grosser Blitz",
+     "alg": "L F' L' U' L U F U' L'",
+     "recognize": "Gruppe: Grosser Blitz."
+    },
+    {
+     "id": "oll-40",
+     "name": "OLL 40",
+     "short": "40",
+     "group": "Grosser Blitz",
+     "alg": "R' F R U R' U' F' U R",
+     "recognize": "Gruppe: Grosser Blitz."
+    },
+    {
+     "id": "oll-41",
+     "name": "OLL 41",
+     "short": "41",
+     "group": "Awkward",
+     "alg": "R U R' U R U2 R' F R U R' U' F'",
+     "recognize": "Gruppe: Awkward."
+    },
+    {
+     "id": "oll-42",
+     "name": "OLL 42",
+     "short": "42",
+     "group": "Awkward",
+     "alg": "R' U' R U' R' U2 R F R U R' U' F'",
+     "recognize": "Gruppe: Awkward."
+    },
+    {
+     "id": "oll-43",
+     "name": "OLL 43",
+     "short": "43",
+     "group": "P-Form",
+     "alg": "F' U' L' U L F",
+     "recognize": "Gruppe: P-Form."
+    },
+    {
+     "id": "oll-44",
+     "name": "OLL 44 – P",
+     "short": "44",
+     "group": "P-Form",
+     "alg": "F U R U' R' F'",
+     "recognize": "Gruppe: P-Form."
+    },
+    {
+     "id": "oll-45",
+     "name": "OLL 45 – T",
+     "short": "45",
+     "group": "T-Form",
+     "alg": "F R U R' U' F'",
+     "recognize": "Gruppe: T-Form."
+    },
+    {
+     "id": "oll-46",
+     "name": "OLL 46",
+     "short": "46",
+     "group": "C-Form",
+     "alg": "R' U' R' F R F' U R",
+     "recognize": "Gruppe: C-Form."
+    },
+    {
+     "id": "oll-47",
+     "name": "OLL 47",
+     "short": "47",
+     "group": "Kleines L",
+     "alg": "R' U' R' F R F' R' F R F' U R",
+     "recognize": "Gruppe: Kleines L."
+    },
+    {
+     "id": "oll-48",
+     "name": "OLL 48",
+     "short": "48",
+     "group": "Kleines L",
+     "alg": "F R U R' U' R U R' U' F'",
+     "recognize": "Gruppe: Kleines L."
+    },
+    {
+     "id": "oll-49",
+     "name": "OLL 49",
+     "short": "49",
+     "group": "Kleines L",
+     "alg": "r U' r2 U r2 U r2 U' r",
+     "recognize": "Gruppe: Kleines L."
+    },
+    {
+     "id": "oll-50",
+     "name": "OLL 50",
+     "short": "50",
+     "group": "Kleines L",
+     "alg": "r' U r2 U' r2 U' r2 U r'",
+     "recognize": "Gruppe: Kleines L."
+    },
+    {
+     "id": "oll-51",
+     "name": "OLL 51",
+     "short": "51",
+     "group": "Linie",
+     "alg": "F U R U' R' U R U' R' F'",
+     "recognize": "Gruppe: Linie."
+    },
+    {
+     "id": "oll-52",
+     "name": "OLL 52",
+     "short": "52",
+     "group": "Linie",
+     "alg": "R U R' U R U' B U' B' R'",
+     "recognize": "Gruppe: Linie."
+    },
+    {
+     "id": "oll-53",
+     "name": "OLL 53",
+     "short": "53",
+     "group": "Kleines L",
+     "alg": "l' U2 L U L' U' L U L' U l",
+     "recognize": "Gruppe: Kleines L."
+    },
+    {
+     "id": "oll-54",
+     "name": "OLL 54",
+     "short": "54",
+     "group": "Kleines L",
+     "alg": "r U2 R' U' R U R' U' R U' r'",
+     "recognize": "Gruppe: Kleines L."
+    },
+    {
+     "id": "oll-55",
+     "name": "OLL 55",
+     "short": "55",
+     "group": "Linie",
+     "alg": "R' F R U R U' R2 F' R2 U' R' U R U R'",
+     "recognize": "Gruppe: Linie."
+    },
+    {
+     "id": "oll-56",
+     "name": "OLL 56",
+     "short": "56",
+     "group": "Linie",
+     "alg": "r' U' r U' R' U R U' R' U R r' U r",
+     "recognize": "Gruppe: Linie."
+    },
+    {
+     "id": "oll-57",
+     "name": "OLL 57 – H-Linie",
+     "short": "57",
+     "group": "Ecken orientiert",
+     "alg": "R U R' U' M' U R U' r'",
+     "recognize": "Gruppe: Ecken orientiert."
+    }
+   ]
+  },
+  {
+   "id": "f2l",
+   "name": "F2L",
+   "full": "First Two Layers",
+   "size": 41,
+   "mask": "f2l",
+   "views": [
+    "iso"
+   ],
+   "description": "41 Fälle: Ecke und Kante eines Slots gleichzeitig einsetzen. Dieses Set ist vorbereitet und wird später befüllt.",
+   "groups": [
+    "Einfache Fälle",
+    "Ecke unten, Kante oben",
+    "Kante in der Mitte",
+    "Ecke oben, Kante oben",
+    "Ecke und Kante im Slot"
+   ],
+   "cases": []
+  }
+ ]
+}
+</script>
+<script id="app">
+/* ===== Cube Coach – App ===== */
+(() => {
+  'use strict';
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const now = () => Date.now();
+
+  /* ---------- Speicher ---------- */
+  const Store = (() => {
+    const KEY = 'cubecoach.v1';
+    const def = () => ({ v: 1, learned: {}, cards: {}, times: [], settings: { inspection: false, speed: 1, drillMode: 'cube', drillSet: 'all', show3d: false } });
+    const merge = o => { const d = def(); return Object.assign(d, o, { settings: Object.assign(d.settings, o && o.settings) }); };
+    let s;
+    try { s = merge(JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { s = def(); }
+    return {
+      get s() { return s; },
+      save() { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { toast('Speichern nicht möglich'); } },
+      replace(o) { s = merge(o); this.save(); },
+      reset() { s = def(); this.save(); },
+      def,
+    };
+  })();
+
+  /* ---------- Fälle ---------- */
+  const CASES = new Map();
+  const LESSONS = DATA.lessons || [];
+  for (const l of LESSONS) for (const c of l.cases) {
+    CASES.set(c.id, Object.assign({}, c, { setId: 'beginner', lesson: l, mask: c.mask || l.mask, views: c.views || l.views, full: c.alg }));
+  }
+  for (const s of DATA.sets) for (const c of (s.cases || [])) {
+    CASES.set(c.id, Object.assign({}, c, { setId: s.id, set: s, mask: s.mask, views: s.views, arrows: !!s.arrows, full: (c.alg + ' ' + (c.auf || '')).trim() }));
+  }
+  const casesOfSet = id => id === 'beginner' ? LESSONS.flatMap(l => l.cases.map(c => CASES.get(c.id))) : [...CASES.values()].filter(c => c.setId === id);
+  const stCache = new Map();
+  const caseState = c => {
+    if (!stCache.has(c.id)) stCache.set(c.id, c.kind === 'move' ? Cube.solved() : Cube.caseState(c.full));
+    return stCache.get(c.id);
+  };
+  function dia(c, view, o = {}) {
+    const st = o.state || caseState(c);
+    if (view === 'top') return Render.top(st, { mask: c.mask, arrows: c.arrows && o.arrows !== false });
+    return Render.iso(st, { mask: c.mask, bottom: view === 'isoD', move: c.kind === 'move' && !o.state ? c.alg : o.move });
+  }
+  const dias = (c, views = c.views, cls = '') => `<div class="dias ${cls}">${views.map(v => dia(c, v)).join('')}</div>`;
+  const algHTML = (c, cls = '') => `<div class="alg ${cls}">${esc(c.alg)}${c.auf ? ` <span class="auf">${esc(c.auf)}</span>` : ''}</div>`;
+
+  /* ---------- Zug-Beschreibungen ---------- */
+  const WORDS = {
+    R: ['Rechte Seite nach oben', 'Rechte Seite nach unten', 'Rechte Seite'],
+    L: ['Linke Seite nach unten', 'Linke Seite nach oben', 'Linke Seite'],
+    U: ['Obere Ebene nach links', 'Obere Ebene nach rechts', 'Obere Ebene'],
+    D: ['Untere Ebene nach rechts', 'Untere Ebene nach links', 'Untere Ebene'],
+    F: ['Vorderseite im Uhrzeigersinn', 'Vorderseite gegen den Uhrzeigersinn', 'Vorderseite'],
+    B: ['Rückseite im Uhrzeigersinn (von hinten gesehen)', 'Rückseite gegen den Uhrzeigersinn (von hinten gesehen)', 'Rückseite'],
+    M: ['Mittlere Scheibe nach unten (wie L)', 'Mittlere Scheibe nach oben (wie L\')', 'Mittlere Scheibe M'],
+    E: ['Mittlere Ebene nach rechts (wie D)', 'Mittlere Ebene nach links (wie D\')', 'Mittlere Ebene E'],
+    S: ['Mittlere Scheibe im Uhrzeigersinn (wie F)', 'Mittlere Scheibe gegen den Uhrzeigersinn (wie F\')', 'Mittlere Scheibe S'],
+    x: ['Ganzen Würfel nach hinten kippen (wie R)', 'Ganzen Würfel nach vorne kippen (wie R\')', 'Ganzen Würfel kippen'],
+    y: ['Ganzen Würfel nach links drehen (wie U)', 'Ganzen Würfel nach rechts drehen (wie U\')', 'Ganzen Würfel drehen'],
+    z: ['Ganzen Würfel nach rechts kippen (wie F)', 'Ganzen Würfel nach links kippen (wie F\')', 'Ganzen Würfel kippen'],
+  };
+  function describe(mv) {
+    const wide = /[rludfb]/.test(mv.base);
+    const w = WORDS[wide ? mv.base.toUpperCase() : mv.base];
+    const txt = mv.amount === 2 ? w[2] + ' – halbe Drehung' : w[mv.amount === 1 ? 0 : 1];
+    return wide ? 'Zwei Schichten: ' + txt : txt;
+  }
+
+  /* ---------- Bildschirm wach halten ---------- */
+  const Wake = (() => {
+    let lock = null; const reasons = new Set();
+    async function acquire() {
+      if (!reasons.size || lock || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+      try { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } catch (e) { lock = null; }
+    }
+    function update() {
+      if (reasons.size) acquire();
+      else if (lock) { lock.release().catch(() => {}); lock = null; }
+    }
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') acquire(); });
+    return { on(r) { reasons.add(r); update(); }, off(r) { reasons.delete(r); update(); }, get active() { return !!lock; } };
+  })();
+
+  /* ---------- Kleinkram ---------- */
+  let toastT;
+  function toast(msg) {
+    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+  function ago(ts) {
+    if (!ts) return 'noch nie';
+    const d = now() - ts, m = Math.round(d / 6e4), h = Math.round(d / 36e5), dd = Math.round(d / 864e5);
+    if (m < 1) return 'gerade eben';
+    if (m < 60) return `vor ${m} Min.`;
+    if (h < 24) return `vor ${h} Std.`;
+    return dd === 1 ? 'gestern' : `vor ${dd} Tagen`;
+  }
+  function inTime(ts) {
+    const d = ts - now();
+    if (d <= 0) return 'jetzt';
+    const m = Math.ceil(d / 6e4), h = Math.round(d / 36e5), dd = Math.round(d / 864e5);
+    if (m < 60) return `in ${m} Min.`;
+    if (h < 24) return `in ${h} Std.`;
+    return dd === 1 ? 'morgen' : `in ${dd} Tagen`;
+  }
+  const ICON = {
+    learn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5C5.5 4 8.5 4 12 6c3.5-2 6.5-2 9-.5V19c-2.5-1.5-5.5-1.5-9 .5-3.5-2-6.5-2-9-.5z"/><path d="M12 6v13.5"/></svg>',
+    drill: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="14" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v12"/><path d="M7 14l2 2 4-4"/></svg>',
+    timer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 2M9.5 2.5h5M12 2.5V6M18.5 6.5l1.5-1.5"/></svg>',
+    sets: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
+    more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>',
+    close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    steps: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h12M13 6l6 6-6 6"/></svg>',
+    cube: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><path d="M4 7.4l8 4.6 8-4.6M12 12v9.2"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  };
+  const BRAND = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="4" width="56" height="56" rx="14" fill="#241d15"/><g fill="#d9a845"><rect x="13" y="13" width="11" height="11" rx="2.5"/><rect x="26.5" y="13" width="11" height="11" rx="2.5"/><rect x="40" y="13" width="11" height="11" rx="2.5" opacity=".55"/><rect x="13" y="26.5" width="11" height="11" rx="2.5"/><rect x="26.5" y="26.5" width="11" height="11" rx="2.5"/><rect x="40" y="26.5" width="11" height="11" rx="2.5"/><rect x="13" y="40" width="11" height="11" rx="2.5" opacity=".55"/><rect x="26.5" y="40" width="11" height="11" rx="2.5"/><rect x="40" y="40" width="11" height="11" rx="2.5"/></g></svg>';
+
+  /* ---------- Overlay (Vollbild-Dialoge) ---------- */
+  let overlay = null;
+  function openOverlay(title, { onClose } = {}) {
+    closeOverlay(true);
+    const el = document.createElement('div');
+    el.className = 'overlay';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.innerHTML = `<div class="ov-head"><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="Schliessen">${ICON.close}</button></div><div class="ov-body"></div><div class="ov-foot"></div>`;
+    $('#overlay-root').appendChild(el);
+    el.querySelector('[data-close]').addEventListener('click', () => history.back());
+    overlay = { el, onClose };
+    if (history.state && history.state.overlay) history.replaceState({ overlay: true }, '');
+    else history.pushState({ overlay: true }, '');
+    Wake.on('overlay');
+    document.body.style.overflow = 'hidden';
+    return { el, body: el.querySelector('.ov-body'), foot: el.querySelector('.ov-foot') };
+  }
+  function closeOverlay(silent) {
+    if (!overlay) return;
+    const o = overlay; overlay = null;
+    if (o.onClose) o.onClose();
+    o.el.remove();
+    Wake.off('overlay');
+    document.body.style.overflow = '';
+  }
+  window.addEventListener('popstate', () => { if (overlay) closeOverlay(); });
+
+  /* ---------- Zug-für-Zug-Trainer ---------- */
+  function openTrainer(c) {
+    const moves = Cube.parse(c.full);
+    const st0 = caseState(c);
+    const views = c.views.filter(v => v !== 'top');
+    if (!views.length) views.push('iso');
+    let i = 0, view3d = null, show3d = Store.s.settings.show3d, busy = false;
+    const ov = openOverlay(c.kind === 'move' ? 'Zug ' + c.name : c.name, { onClose: () => document.removeEventListener('keydown', key) });
+    ov.body.innerHTML = `
+      <div class="trainer-vis"><div class="dias" data-dia></div><div class="c3wrap ${show3d ? '' : 'hidden'}" data-c3></div></div>
+      <div class="step-move"><div class="big-move" data-big></div><div class="desc" data-desc></div><div class="count" data-count></div></div>
+      <div class="moves" data-moves style="justify-content:center"></div>
+      <button class="btn sm ghost" data-t3d style="align-self:center">${ICON.cube} <span>${show3d ? '3D ausblenden' : '3D-Hilfe einblenden'}</span></button>`;
+    ov.foot.innerHTML = `<div class="btns two"><button class="btn big" data-prev>Zurück</button><button class="btn big primary" data-next>Weiter</button></div>`;
+    const ensure3d = () => {
+      if (!view3d) { view3d = new Cube3D.View(ov.body.querySelector('[data-c3]'), { mask: c.mask }); }
+      view3d.setState(Cube.apply(st0, moves.slice(0, i)));
+    };
+    if (show3d) ensure3d();
+    function render() {
+      const st = Cube.apply(st0, moves.slice(0, i));
+      const done = i >= moves.length;
+      ov.body.querySelector('[data-dia]').innerHTML = views.map(v => Render.iso(st, { mask: c.mask, bottom: v === 'isoD', move: done ? null : moves[i] })).join('');
+      ov.body.querySelector('[data-big]').innerHTML = done ? `<span style="color:var(--good)">✓</span>` : esc(Cube.moveStr(moves[i]));
+      ov.body.querySelector('[data-desc]').textContent = done ? (moves.length > 1 ? 'Geschafft! Vergleiche deinen Würfel mit dem Bild.' : 'Gut gemacht!') : describe(moves[i]);
+      ov.body.querySelector('[data-count]').textContent = done ? `${moves.length} Züge` : `Zug ${i + 1} von ${moves.length}`;
+      ov.body.querySelector('[data-moves]').innerHTML = moves.map((m, k) => `<span class="mv ${k < i ? 'done' : k === i ? 'now' : ''}">${esc(Cube.moveStr(m))}</span>`).join('');
+      const next = ov.foot.querySelector('[data-next]');
+      next.textContent = done ? 'Nochmals' : (i === moves.length - 1 ? 'Letzter Zug' : 'Weiter');
+      ov.foot.querySelector('[data-prev]').disabled = i === 0;
+    }
+    async function next() {
+      if (busy) return;
+      if (i >= moves.length) { i = 0; if (view3d) view3d.setState(st0); render(); return; }
+      if (show3d && view3d) { busy = true; const k = i; i++; render(); await view3d.animate(moves[k], 380 / Store.s.settings.speed); busy = false; }
+      else { i++; render(); }
+    }
+    function prev() {
+      if (busy || i === 0) return;
+      i--; render();
+      if (view3d) view3d.setState(Cube.apply(st0, moves.slice(0, i)));
+    }
+    function key(e) {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); next(); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+    }
+    document.addEventListener('keydown', key);
+    ov.foot.querySelector('[data-next]').addEventListener('click', next);
+    ov.foot.querySelector('[data-prev]').addEventListener('click', prev);
+    ov.body.querySelector('[data-t3d]').addEventListener('click', e => {
+      show3d = !show3d; Store.s.settings.show3d = show3d; Store.save();
+      ov.body.querySelector('[data-c3]').classList.toggle('hidden', !show3d);
+      e.currentTarget.querySelector('span').textContent = show3d ? '3D ausblenden' : '3D-Hilfe einblenden';
+      if (show3d) ensure3d();
+    });
+    render();
+  }
+
+  /* ---------- 3D-Animation ---------- */
+  function openPlayer(c) {
+    const ov = openOverlay('3D: ' + c.name, { onClose: () => p.stop() });
+    ov.body.innerHTML = `<div data-p></div><p class="muted small" style="text-align:center">Ziehen dreht die Ansicht. Tippe auf einen Zug, um dorthin zu springen.</p>`;
+    const p = new Cube3D.Player(ov.body.querySelector('[data-p]'), { alg: c.full, start: caseState(c), mask: c.mask, speed: Store.s.settings.speed });
+    ov.foot.innerHTML = `<button class="btn block" data-steps>${ICON.steps} Zug für Zug am echten Würfel</button>`;
+    ov.foot.querySelector('[data-steps]').addEventListener('click', () => { closeOverlay(true); openTrainer(c); });
+  }
+
+  function bindCaseButtons(root) {
+    root.addEventListener('click', e => {
+      const b = e.target.closest('[data-steps],[data-3d]');
+      if (!b) return;
+      const c = CASES.get(b.dataset.steps || b.dataset['3d']);
+      if (!c) return;
+      if (b.dataset.steps) openTrainer(c); else openPlayer(c);
+    });
+  }
+  const caseButtons = c => `<div class="btns two"><button class="btn primary" data-steps="${c.id}">${ICON.steps} Zug für Zug</button><button class="btn" data-3d="${c.id}">${ICON.cube} 3D-Animation</button></div>`;
+
+  /* ---------- Ansichten ---------- */
+  const VIEWS = {};
+  let cleanup = null;
+
+  // Lernpfad
+  VIEWS.learn = () => {
+    const learned = Store.s.learned;
+    const n = LESSONS.filter(l => learned[l.id]).length;
+    const nextL = LESSONS.find(l => !learned[l.id]);
+    let h = `<div class="card gold">
+      <div class="eyebrow">Dein Lernpfad · Anfängermethode</div>
+      <h2 style="margin:4px 0 8px">${nextL ? 'Weiter mit Lektion ' + nextL.nr : 'Alle Lektionen gelernt!'}</h2>
+      <div class="progress" aria-label="${n} von ${LESSONS.length}"><i style="width:${(n / LESSONS.length) * 100}%"></i></div>
+      <p class="muted small" style="margin-top:8px">${n} von ${LESSONS.length} Lektionen gelernt. Gelernte Fälle kommen in den Drill.</p>
+      ${nextL ? `<a class="btn primary block" href="#/lesson/${nextL.id}" style="margin-top:6px">${esc(nextL.title)} öffnen</a>` : `<a class="btn primary block" href="#/drill" style="margin-top:6px">Zum Drill</a>`}
+    </div>`;
+    h += LESSONS.map(l => {
+      const goalSt = Cube.solved();
+      const thumb = Render.iso(goalSt, { mask: l.mask, bottom: (l.goalViews || l.views)[0] === 'isoD' });
+      return `<a class="lesson-item ${learned[l.id] ? 'done' : ''}" href="#/lesson/${l.id}">
+        <span class="nr">${learned[l.id] ? ICON.check.replace('<svg', '<svg width="22" height="22"') : l.nr}</span>
+        <span class="t"><b>${esc(l.title)}</b><span>${esc(l.goal)}</span></span>
+        <span class="thumb">${thumb}</span></a>`;
+    }).join('');
+    return { title: 'Lernpfad', tab: 'learn', html: h, brand: true };
+  };
+
+  // Lektion
+  VIEWS.lesson = id => {
+    const l = LESSONS.find(x => x.id === id);
+    if (!l) return VIEWS.learn();
+    const learned = Store.s.learned[l.id];
+    const goalSt = Cube.solved();
+    const goalDias = (l.goalViews || l.views).map(v => v === 'top' ? Render.top(goalSt, { mask: l.mask }) : Render.iso(goalSt, { mask: l.mask, bottom: v === 'isoD' })).join('');
+    let h = `<div class="eyebrow">Lektion ${l.nr}</div><h2 style="margin:2px 0 14px">${esc(l.title)}</h2>
+      <div class="card gold"><div class="eyebrow">Ziel</div><p>${esc(l.goal)}</p><div class="dias lg">${goalDias}</div></div>
+      <div class="card flat stack">${l.intro.map(p => `<p>${esc(p)}</p>`).join('')}</div>`;
+    if (l.tip) h += `<div class="card flat"><div class="eyebrow">Tipp</div><p>${esc(l.tip)}</p></div>`;
+    h += `<div class="section-title"><h3>${l.nr === 0 ? 'Die Grundzüge' : 'Szenarien'}</h3><span class="muted small">${l.cases.length} ${l.nr === 0 ? 'Züge' : 'Fälle'}</span></div>`;
+    if (l.nr === 0) {
+      h += `<p class="muted small">Tippe auf einen Zug, um ihn Schritt für Schritt (auch in 3D) zu sehen. Mach jeden Zug am echten Würfel nach – und gleich wieder zurück.</p><div class="move-grid">` +
+        l.cases.map(c => `<button class="move-card" data-steps="${c.id}"><div class="alg">${esc(c.name)}</div>${dia(CASES.get(c.id), 'iso')}<div class="small">${esc(c.recognize)}</div></button>`).join('') + '</div>';
+    } else {
+      h += l.cases.map((c0, k) => {
+        const c = CASES.get(c0.id);
+        return `<div class="card scenario">
+          <div class="head"><h3>${k + 1}. ${esc(c.name)}</h3></div>
+          ${dias(c)}
+          <dl class="kv"><dt>Erkennen</dt><dd>${esc(c.recognize)}</dd><dt>Halten</dt><dd>${esc(c.hold)}</dd></dl>
+          <div style="margin:14px 0 12px">${algHTML(c)}<div class="muted small">${Cube.parse(c.full).length} Züge</div></div>
+          ${caseButtons(c)}
+        </div>`;
+      }).join('');
+    }
+    const nextL = LESSONS.find(x => x.nr === l.nr + 1);
+    h += `<div class="card ${learned ? '' : 'gold'}" style="margin-top:22px">
+      ${learned
+        ? `<p><b style="color:var(--good)">✓ Gelernt</b> <span class="muted">(${new Date(learned).toLocaleDateString('de-CH')})</span>. Die ${l.cases.length} Fälle sind im Drill.</p>
+           <div class="btns two"><a class="btn primary" href="#/drill">Zum Drill</a><button class="btn" data-unlearn>Wieder offen</button></div>`
+        : `<p>Kannst du alle ${l.nr === 0 ? 'Züge' : 'Szenarien'} am echten Würfel? Dann markiere die Lektion als gelernt – ihre Fälle kommen in den Drill.</p>
+           <button class="btn primary big block" data-learn>${ICON.check} Lektion als gelernt markieren</button>`}
+    </div>`;
+    h += `<div class="btns two">${l.nr > 0 ? `<a class="btn ghost" href="#/lesson/${LESSONS[l.nr - 1].id}">← Lektion ${l.nr - 1}</a>` : '<span></span>'}${nextL ? `<a class="btn ghost" href="#/lesson/${nextL.id}">Lektion ${nextL.nr} →</a>` : ''}</div>`;
+    return {
+      title: `Lektion ${l.nr}`, back: '#/learn', tab: 'learn', wake: true, html: h,
+      mount(el) {
+        bindCaseButtons(el);
+        const lb = $('[data-learn]', el);
+        if (lb) lb.addEventListener('click', () => {
+          Store.s.learned[l.id] = now();
+          for (const c of l.cases) if (!Store.s.cards[c.id]) Store.s.cards[c.id] = Logic.newCard(now());
+          Store.save();
+          toast(`Lektion ${l.nr} gelernt – ${l.cases.length} Fälle im Drill`);
+          render();
+        });
+        const ub = $('[data-unlearn]', el);
+        if (ub) ub.addEventListener('click', () => { delete Store.s.learned[l.id]; Store.save(); render(); });
+      },
+    };
+  };
+
+  /* ---------- Drill (Leitner) ---------- */
+  const D = { id: null, phase: 'setup', options: null, picked: null, ahead: false, last: null, session: 0, showAlg: false };
+  const SET_NAMES = { beginner: 'Anfänger', pll: 'PLL', oll: 'OLL', f2l: 'F2L' };
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const allDrillIds = () => Object.keys(Store.s.cards).filter(id => CASES.has(id));
+  function drillPool() {
+    const f = Store.s.settings.drillSet;
+    return allDrillIds().filter(id => f === 'all' || CASES.get(id).setId === f);
+  }
+  function pickCase() {
+    const cards = Store.s.cards, pool = drillPool();
+    let due = Logic.dueIds(cards, pool, now());
+    if (!due.length && D.ahead) due = pool.slice().sort((a, b) => cards[a].due - cards[b].due);
+    if (due.length > 1 && due[0] === D.last) due = due.slice(1);
+    D.id = due[0] || null;
+    D.phase = 'setup'; D.options = null; D.picked = null; D.showAlg = false;
+    if (D.id && CASES.get(D.id).kind === 'move') D.phase = 'solve';
+  }
+  function makeOptions(c) {
+    const label = x => x.kind === 'move' ? x.name : x.full;
+    const sameKind = [...CASES.values()].filter(x => (x.kind === 'move') === (c.kind === 'move') && x.id !== c.id);
+    const near = sameKind.filter(x => (c.lesson ? x.lesson === c.lesson : x.setId === c.setId));
+    const seen = new Set([label(c)]);
+    const out = [c];
+    for (const x of [...shuffle(near), ...shuffle(sameKind.filter(x => !near.includes(x)))]) {
+      if (out.length >= 4) break;
+      if (seen.has(label(x))) continue;
+      seen.add(label(x)); out.push(x);
+    }
+    return shuffle(out).map(x => ({ id: x.id, label: label(x), auf: x.kind === 'move' ? '' : x.auf }));
+  }
+  function statsLine(id) {
+    const k = Store.s.cards[id];
+    if (!k) return '';
+    const hr = Logic.hitRate(k);
+    return `<div class="stats-line">
+      <span class="chip" title="Leitner-Box ${k.box} von 5"><span class="box-pill">${[1, 2, 3, 4, 5].map(b => `<i class="${b <= k.box ? 'on' : ''}"></i>`).join('')}</span> Box ${k.box}</span>
+      <span class="chip">${k.reps} Wdh.</span>
+      <span class="chip">${hr == null ? '– %' : Math.round(hr * 100) + ' %'} Treffer</span>
+      <span class="chip">zuletzt ${ago(k.last)}</span></div>`;
+  }
+  function drillHTML() {
+    const s = Store.s.settings, cards = Store.s.cards;
+    const all = allDrillIds();
+    if (!all.length) {
+      return `<div class="card empty"><div class="big-ico">🃏</div><h3>Noch keine Fälle im Drill</h3>
+        <p class="muted">Markiere eine Lektion als gelernt oder nimm PLL/OLL-Fälle in der Übersicht auf.</p>
+        <div class="btns two" style="margin-top:12px"><a class="btn primary" href="#/learn">Lernpfad</a><a class="btn" href="#/sets/pll">CFOP-Sets</a></div></div>`;
+    }
+    const sets = [...new Set(all.map(id => CASES.get(id).setId))];
+    if (s.drillSet !== 'all' && !sets.includes(s.drillSet)) s.drillSet = 'all';
+    const pool = drillPool();
+    const due = Logic.dueIds(cards, pool, now()).length;
+    let h = `<div class="seg" data-mode style="margin-bottom:10px">
+        <button data-m="cube" class="${s.drillMode === 'cube' ? 'on' : ''}">${ICON.cube} Am Würfel</button>
+        <button data-m="recog" class="${s.drillMode === 'recog' ? 'on' : ''}">Erkennen</button></div>`;
+    if (sets.length > 1) h += `<div class="seg" data-set style="margin-bottom:10px"><button data-s="all" class="${s.drillSet === 'all' ? 'on' : ''}">Alle</button>${sets.map(id => `<button data-s="${id}" class="${s.drillSet === id ? 'on' : ''}">${SET_NAMES[id] || id}</button>`).join('')}</div>`;
+    h += `<div class="row wrap" style="margin:0 2px 12px"><span class="chip ${due ? 'gold' : ''}">Fällig: ${due}</span><span class="chip">Im Drill: ${pool.length}</span><span class="chip">Heute geübt: ${D.session}</span></div>`;
+    if (D.id && (!CASES.has(D.id) || !pool.includes(D.id))) D.id = null;
+    if (!D.id) pickCase();
+    if (!D.id) {
+      const nd = Logic.nextDue(cards, pool);
+      return h + `<div class="card empty"><div class="big-ico">✓</div><h3>Alles erledigt!</h3>
+        <p class="muted">Nächster Fall fällig ${inTime(nd)}.</p>
+        <button class="btn primary" data-ahead style="margin-top:10px">Trotzdem üben</button></div>`;
+    }
+    const c = CASES.get(D.id);
+    const origin = c.lesson ? `Lektion ${c.lesson.nr} · ${c.lesson.title}` : (SET_NAMES[c.setId] + (c.group ? ' · ' + c.group : ''));
+    const img = c.kind === 'move' ? dias(c, ['iso'], 'lg') : `<div class="dias lg">${c.views.map(v => dia(c, v, { arrows: false })).join('')}</div>`;
+    h += `<div class="card drill-card"><div class="eyebrow">${esc(origin)}</div>${img}`;
+    if (s.drillMode === 'recog') {
+      if (!D.options) D.options = makeOptions(c);
+      const answered = D.picked != null;
+      h += `<h3 style="margin-bottom:10px">${c.kind === 'move' ? 'Welcher Zug ist das?' : 'Welcher Algorithmus löst diesen Fall?'}</h3><div class="options">` +
+        D.options.map((o, k) => `<button class="option ${answered && o.id === c.id ? 'right' : ''} ${answered && D.picked === k && o.id !== c.id ? 'wrong' : ''}" data-opt="${k}" ${answered ? 'disabled' : ''}>${esc(o.label)}</button>`).join('') + '</div>';
+      if (answered) {
+        const ok = D.options[D.picked].id === c.id;
+        h += `<p style="margin-top:12px"><b style="color:var(${ok ? '--good' : '--bad'})">${ok ? 'Richtig!' : 'Leider falsch.'}</b> ${esc(c.name)}</p>
+          ${c.kind === 'move' ? '' : caseButtons(c)}
+          <button class="btn primary big block" data-next style="margin-top:10px">Weiter</button>`;
+      }
+    } else if (D.phase === 'setup') {
+      h += `<p class="muted small">1. Aufsetzen – vom gelösten Würfel aus, Gelb oben, Grün vorne:</p>
+        <div class="alg md" style="margin:4px 0 12px">${esc(Cube.invertStr(c.full))}</div>
+        <button class="btn primary big block" data-go>Aufgesetzt – jetzt lösen</button>`;
+    } else {
+      h += c.kind === 'move'
+        ? `<h3>Welcher Zug ist das? Führe ihn am Würfel aus.</h3>`
+        : `<p class="muted small">2. Löse den Fall jetzt aus dem Kopf.</p>`;
+      h += D.showAlg
+        ? `<div style="margin:10px 0"><div class="eyebrow">${esc(c.name)}</div>${algHTML(c)}</div>${c.kind === 'move' ? `<p>${esc(c.recognize)}</p>` : caseButtons(c)}`
+        : `<button class="btn block" data-show style="margin:10px 0">Lösung zeigen</button>`;
+      h += `<p class="muted small" style="margin:14px 0 6px">Wie gut wusstest du es?</p>
+        <div class="btns three"><button class="btn good" data-g="good">Sofort<br>gewusst</button><button class="btn warn" data-g="hard">Mit<br>Mühe</button><button class="btn bad" data-g="again">Nicht<br>gewusst</button></div>`;
+    }
+    h += statsLine(c.id) + '</div>';
+    return h;
+  }
+  function grade(g) {
+    const k = Logic.review(Store.s.cards[D.id], g, now());
+    Store.s.cards[D.id] = k; Store.save();
+    D.session++; D.last = D.id;
+    toast(`Box ${k.box} · wieder ${inTime(k.due)}`);
+    pickCase();
+  }
+  VIEWS.drill = () => ({
+    title: 'Drill', tab: 'drill', wake: true, html: '<div data-drill></div>',
+    mount(el) {
+      const box = $('[data-drill]', el);
+      const draw = () => { box.innerHTML = drillHTML(); };
+      draw();
+      bindCaseButtons(box);
+      box.addEventListener('click', e => {
+        const t = e.target.closest('button'); if (!t) return;
+        const s = Store.s.settings;
+        if (t.dataset.m) { s.drillMode = t.dataset.m; Store.save(); D.options = null; D.picked = null; D.phase = CASES.get(D.id)?.kind === 'move' ? 'solve' : 'setup'; }
+        else if (t.dataset.s) { s.drillSet = t.dataset.s; Store.save(); D.id = null; }
+        else if ('ahead' in t.dataset) { D.ahead = true; D.id = null; }
+        else if ('go' in t.dataset) D.phase = 'solve';
+        else if ('show' in t.dataset) D.showAlg = true;
+        else if (t.dataset.g) grade(t.dataset.g);
+        else if (t.dataset.opt != null) {
+          D.picked = +t.dataset.opt;
+          const ok = D.options[D.picked].id === D.id;
+          const k = Logic.review(Store.s.cards[D.id], ok ? 'good' : 'again', now());
+          Store.s.cards[D.id] = k; Store.save(); D.session++;
+        }
+        else if ('next' in t.dataset) { D.last = D.id; pickCase(); }
+        else return;
+        draw();
+      });
+    },
+  });
+  /* ---------- Timer ---------- */
+  VIEWS.timer = () => ({
+    title: 'Timer', tab: 'timer', wake: true,
+    html: `<div class="card flat"><div class="row between"><span class="eyebrow">Scramble</span><button class="btn sm ghost" data-new>Neuer Scramble</button></div>
+        <p class="scramble" data-scr></p>
+        <details><summary class="muted small" style="cursor:pointer;min-height:36px">Vorschau des verdrehten Würfels</summary><div data-net style="margin-top:8px"></div></details></div>
+      <div class="timer-pad" data-pad role="button" aria-label="Timer: gedrückt halten, loslassen startet, tippen stoppt"><div class="time" data-time>0.00</div><div class="muted small" data-hint></div></div>
+      <label class="switch card flat" style="margin-top:14px;padding:6px 16px"><span>15 s Inspektion</span><input type="checkbox" data-insp ${Store.s.settings.inspection ? 'checked' : ''}></label>
+      <div class="stat-grid" data-stats></div>
+      <div class="section-title"><h3>Zeiten</h3><button class="btn sm ghost" data-clear>Alle löschen</button></div>
+      <ul class="times" data-times></ul>`,
+    mount(el) {
+      const pad = $('[data-pad]', el), timeEl = $('[data-time]', el), hint = $('[data-hint]', el);
+      let state = 'idle', t0 = 0, insp0 = 0, holdT = null, raf = 0, scramble = Cube.scramble(), swallowUp = false;
+      const HINT = {
+        idle: () => Store.s.settings.inspection ? 'Tippen startet die Inspektion.' : 'Gedrückt halten, bis die Zeit grün wird – loslassen startet.',
+        inspect: () => 'Inspektion – gedrückt halten, loslassen startet.',
+        holding: () => 'Halten …', ready: () => 'Loslassen!', running: () => 'Tippen stoppt.',
+      };
+      const showScr = () => { $('[data-scr]', el).textContent = scramble; $('[data-net]', el).innerHTML = Render.net(Cube.apply(Cube.solved(), scramble)); };
+      function setState(s) {
+        state = s;
+        const inInsp = insp0 && (s === 'inspect' || s === 'holding' || s === 'ready');
+        pad.className = 'timer-pad ' + (s === 'idle' ? '' : s) + (inInsp && s === 'inspect' ? ' inspect' : '');
+        document.body.classList.toggle('timing', s !== 'idle' && (s === 'running' || !!insp0));
+        hint.textContent = (HINT[s] || HINT.idle)();
+      }
+      function inspPenalty() {
+        if (!insp0) return 0;
+        const e = (performance.now() - insp0) / 1000;
+        return e > 17 ? 'dnf' : e > 15 ? 2 : 0;
+      }
+      function tick() {
+        if (state === 'running') timeEl.textContent = Logic.fmt(performance.now() - t0);
+        else if (insp0) {
+          const left = 15 - Math.floor((performance.now() - insp0) / 1000);
+          timeEl.textContent = left > 0 ? String(left) : left > -2 ? '+2' : 'DNF';
+        }
+        raf = requestAnimationFrame(tick);
+      }
+      function down() {
+        if (state === 'running') { stop(); return; }
+        if (state === 'idle' && Store.s.settings.inspection) return;
+        if (state === 'idle' || state === 'inspect') {
+          setState('holding');
+          if (!insp0) timeEl.textContent = '0.00';
+          holdT = setTimeout(() => { if (state === 'holding') setState('ready'); }, 400);
+        }
+      }
+      function up() {
+        if (swallowUp) { swallowUp = false; return; }
+        clearTimeout(holdT);
+        if (state === 'idle' && Store.s.settings.inspection) { insp0 = performance.now(); setState('inspect'); return; }
+        if (state === 'holding') setState(insp0 ? 'inspect' : 'idle');
+        else if (state === 'ready') { penalty = inspPenalty(); insp0 = 0; t0 = performance.now(); setState('running'); }
+      }
+      let penalty = 0;
+      function stop() {
+        const ms = Math.round(performance.now() - t0);
+        Store.s.times.push({ ms, penalty, scramble, at: Date.now() });
+        Store.save();
+        timeEl.textContent = Logic.fmt(Logic.effective({ ms, penalty }));
+        swallowUp = true; insp0 = 0; penalty = 0;
+        setState('idle');
+        scramble = Cube.scramble(); showScr(); drawStats();
+      }
+      function drawStats() {
+        const T = Store.s.times;
+        const st = [['Bestzeit', Logic.fmt(T.length ? Logic.best(T) : null)], ['Ø5', Logic.fmt(Logic.average(T, 5))], ['Ø12', Logic.fmt(Logic.average(T, 12))], ['Anzahl', T.length]];
+        $('[data-stats]', el).innerHTML = st.map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+        const list = T.map((t, i) => [t, i]).reverse().slice(0, 100);
+        $('[data-times]', el).innerHTML = list.length ? list.map(([t, i]) => `<li><span class="n">${i + 1}.</span><span class="t">${Logic.fmt(Logic.effective(t))}${t.penalty === 2 ? '<small class="muted"> (+2)</small>' : ''}</span>
+          <button class="btn ${t.penalty === 2 ? 'on' : ''}" data-p2="${i}">+2</button><button class="btn ${t.penalty === 'dnf' ? 'on' : ''}" data-dnf="${i}">DNF</button><button class="btn" data-del="${i}" aria-label="Zeit löschen">✕</button></li>`).join('')
+          : '<li class="muted">Noch keine Zeiten.</li>';
+      }
+      pad.addEventListener('pointerdown', e => { e.preventDefault(); down(); });
+      pad.addEventListener('pointerup', e => { e.preventDefault(); up(); });
+      pad.addEventListener('pointercancel', () => { clearTimeout(holdT); if (state === 'holding' || state === 'ready') setState(insp0 ? 'inspect' : 'idle'); });
+      pad.addEventListener('contextmenu', e => e.preventDefault());
+      const kd = e => {
+        if (overlay) return;
+        if (state === 'running') { e.preventDefault(); stop(); return; }
+        if (e.code === 'Space' && !e.repeat) { e.preventDefault(); down(); }
+      };
+      const ku = e => { if (e.code === 'Space') { e.preventDefault(); up(); } };
+      document.addEventListener('keydown', kd);
+      document.addEventListener('keyup', ku);
+      $('[data-new]', el).addEventListener('click', () => { scramble = Cube.scramble(); showScr(); });
+      $('[data-insp]', el).addEventListener('change', e => { Store.s.settings.inspection = e.target.checked; Store.save(); setState('idle'); });
+      $('[data-clear]', el).addEventListener('click', () => {
+        if (Store.s.times.length && confirm('Alle Zeiten löschen?')) { Store.s.times = []; Store.save(); drawStats(); }
+      });
+      $('[data-times]', el).addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b) return;
+        const T = Store.s.times;
+        if (b.dataset.p2) { const t = T[+b.dataset.p2]; t.penalty = t.penalty === 2 ? 0 : 2; }
+        else if (b.dataset.dnf) { const t = T[+b.dataset.dnf]; t.penalty = t.penalty === 'dnf' ? 0 : 'dnf'; }
+        else if (b.dataset.del) { T.splice(+b.dataset.del, 1); }
+        Store.save(); drawStats();
+      });
+      showScr(); drawStats(); setState('idle'); tick();
+      return () => { cancelAnimationFrame(raf); document.removeEventListener('keydown', kd); document.removeEventListener('keyup', ku); document.body.classList.remove('timing'); clearTimeout(holdT); };
+    },
+  });
+
+  /* ---------- Sets & Übersicht ---------- */
+  const tile = c => {
+    const k = Store.s.cards[c.id];
+    const v = c.views[0];
+    return `<a class="tile ${k ? 'b' + k.box + ' indrill' : ''}" href="#/case/${c.id}">${dia(c, v === 'isoD' ? 'iso' : v)}<b>${esc(c.short || c.name)}</b></a>`;
+  };
+  VIEWS.sets = (id = 'pll') => {
+    const set = DATA.sets.find(s => s.id === id) || DATA.sets[1];
+    const cases = casesOfSet(set.id);
+    const inDrill = cases.filter(c => Store.s.cards[c.id]).length;
+    const mastered = cases.filter(c => (Store.s.cards[c.id] || {}).box >= 4).length;
+    let h = `<div class="seg" style="margin-bottom:14px">${DATA.sets.map(s => `<button data-set="${s.id}" class="${s.id === set.id ? 'on' : ''}">${esc(s.name)}</button>`).join('')}</div>
+      <div class="card"><div class="eyebrow">${esc(set.full || 'Lernpfad')}</div><h2 style="margin:2px 0 6px">${esc(set.name)}</h2><p class="muted">${esc(set.description)}</p>`;
+    if (cases.length) {
+      h += `<div class="progress" style="margin:10px 0 6px"><i style="width:${(mastered / cases.length) * 100}%"></i></div>
+        <p class="small muted">${inDrill} von ${cases.length} im Drill · ${mastered} sicher (Box 4–5)</p>
+        <div class="btns two" style="margin-top:8px"><button class="btn primary" data-addall>Alle in den Drill</button><button class="btn" data-rmall ${inDrill ? '' : 'disabled'}>Alle entfernen</button></div>`;
+    }
+    h += '</div>';
+    h += `<div class="legend" style="margin:0 2px 8px"><span><i style="border-color:var(--b0)"></i>neu</span>${[1, 2, 3, 4, 5].map(b => `<span><i style="border-color:var(--b${b})"></i>Box ${b}</span>`).join('')}</div>`;
+    if (!cases.length) {
+      h += `<div class="card flat"><h3>${set.size} Fälle geplant</h3><p class="muted">Die Struktur steht: Sobald Fälle mit Algorithmus eingetragen sind, erscheinen sie hier und im Drill – Bilder und Tests entstehen automatisch aus den Algorithmen.</p>
+        <ul>${(set.groups || []).map(g => `<li>${esc(g)}</li>`).join('')}</ul></div>`;
+    } else {
+      const groups = new Map();
+      for (const c of cases) {
+        const g = c.lesson ? `Lektion ${c.lesson.nr} · ${c.lesson.title}` : c.group;
+        if (!groups.has(g)) groups.set(g, []);
+        groups.get(g).push(c);
+      }
+      for (const [g, list] of groups) h += `<div class="section-title"><h3>${esc(g)}</h3><span class="muted small">${list.length}</span></div><div class="grid">${list.map(tile).join('')}</div>`;
+    }
+    return {
+      title: 'Sets & Übersicht', tab: 'sets', html: h,
+      mount(el) {
+        el.addEventListener('click', e => {
+          const b = e.target.closest('button'); if (!b) return;
+          if (b.dataset.set) location.hash = '#/sets/' + b.dataset.set;
+          else if ('addall' in b.dataset) {
+            let n = 0;
+            for (const c of cases) if (!Store.s.cards[c.id]) { Store.s.cards[c.id] = Logic.newCard(now()); n++; }
+            Store.save(); toast(n ? `${n} Fälle in den Drill aufgenommen` : 'Alle Fälle sind schon im Drill'); render();
+          } else if ('rmall' in b.dataset) {
+            if (!confirm(`Alle ${set.name}-Fälle samt Fortschritt aus dem Drill entfernen?`)) return;
+            for (const c of cases) delete Store.s.cards[c.id];
+            Store.save(); render();
+          }
+        });
+      },
+    };
+  };
+
+  VIEWS.case = id => {
+    const c = CASES.get(id);
+    if (!c) return VIEWS.sets();
+    const k = Store.s.cards[c.id];
+    const views = c.kind === 'move' ? ['iso'] : [...new Set([...c.views, 'iso'])];
+    let h = `<div class="eyebrow">${esc(c.lesson ? `Lektion ${c.lesson.nr} · ${c.lesson.title}` : `${c.set.name} · ${c.group || ''}`)}</div>
+      <h2 style="margin:2px 0 12px">${esc(c.name)}</h2>
+      <div class="card"><div class="dias lg">${views.map(v => dia(c, v)).join('')}</div>
+      <dl class="kv" style="margin-top:12px"><dt>Erkennen</dt><dd>${esc(c.recognize || '')}</dd>${c.hold ? `<dt>Halten</dt><dd>${esc(c.hold)}</dd>` : ''}</dl>
+      <div style="margin:14px 0 4px">${algHTML(c)}</div>
+      ${c.auf ? `<p class="muted small">Grau: abschliessende U-Drehung (AUF), damit die obere Ebene passt.</p>` : ''}
+      <p class="muted small">${Cube.parse(c.full).length} Züge${c.kind === 'move' ? '' : ` · Aufsetzen: <span class="alg sm">${esc(Cube.invertStr(c.full))}</span>`}</p>
+      ${caseButtons(c)}</div>
+      <div class="card"><label class="switch"><span><b>Im Drill</b><br><span class="muted small">${k ? `Box ${k.box} · fällig ${inTime(k.due)}` : 'Noch nicht aufgenommen'}</span></span><input type="checkbox" data-drill ${k ? 'checked' : ''}></label>${statsLine(c.id)}</div>`;
+    return {
+      title: c.short ? (c.set ? c.set.name + ' ' + c.short : c.name) : 'Fall', back: c.lesson ? '#/lesson/' + c.lesson.id : '#/sets/' + c.setId, tab: 'sets', html: h,
+      mount(el) {
+        bindCaseButtons(el);
+        $('[data-drill]', el).addEventListener('change', e => {
+          if (e.target.checked) Store.s.cards[c.id] = Store.s.cards[c.id] || Logic.newCard(now());
+          else delete Store.s.cards[c.id];
+          Store.save(); render();
+        });
+      },
+    };
+  };
+
+  /* ---------- Mehr: Einstellungen, Export/Import ---------- */
+  VIEWS.more = () => {
+    const s = Store.s, set = s.settings;
+    const reviews = Object.values(s.cards).reduce((a, c) => a + c.reps, 0);
+    const sw = 'serviceWorker' in navigator && navigator.serviceWorker.controller;
+    const h = `<div class="card"><div class="eyebrow">Dein Stand</div>
+        <div class="stat-grid" style="margin-top:8px"><div class="stat"><b>${Object.keys(s.learned).length}/${LESSONS.length}</b><span>Lektionen</span></div><div class="stat"><b>${Object.keys(s.cards).length}</b><span>im Drill</span></div><div class="stat"><b>${reviews}</b><span>Wdh.</span></div><div class="stat"><b>${s.times.length}</b><span>Solves</span></div></div></div>
+      <div class="card stack"><div class="eyebrow">Fortschritt sichern</div>
+        <p class="muted small">Alles wird nur auf diesem Gerät gespeichert. Exportiere eine JSON-Datei als Backup oder um auf ein anderes Gerät umzuziehen.</p>
+        <div class="btns two"><button class="btn primary" data-export>Exportieren</button><label class="btn">Importieren<input type="file" accept="application/json,.json" data-import hidden></label></div></div>
+      <div class="card"><div class="eyebrow">Einstellungen</div>
+        <div style="padding:8px 0"><div style="margin-bottom:6px">Animationstempo</div><div class="seg" data-speed>${[0.5, 1, 1.5, 2].map(v => `<button data-v="${v}" class="${set.speed === v ? 'on' : ''}">${String(v).replace('.', ',')}×</button>`).join('')}</div></div>
+        <label class="switch"><span>3D-Hilfe im Zug-für-Zug-Modus</span><input type="checkbox" data-s3d ${set.show3d ? 'checked' : ''}></label>
+        <label class="switch"><span>15 s Inspektion im Timer</span><input type="checkbox" data-insp ${set.inspection ? 'checked' : ''}></label></div>
+      <div class="card"><div class="eyebrow">App</div>
+        <p>${sw ? '<b style="color:var(--good)">✓ Offline bereit</b> – die App funktioniert ohne Internet.' : 'Offline-Speicher wird beim nächsten Laden eingerichtet.'}</p>
+        <p class="muted small">Cube Coach · Farbschema: Gelb oben, Grün vorne, Weiss unten. Alle Fallbilder werden aus den Algorithmen berechnet.</p>
+        <button class="btn bad block" data-reset style="margin-top:8px">Alle Daten zurücksetzen</button></div>`;
+    return {
+      title: 'Mehr', tab: 'more', html: h,
+      mount(el) {
+        $('[data-export]', el).addEventListener('click', () => {
+          const blob = new Blob([JSON.stringify({ app: 'cube-coach', version: 1, exported: new Date().toISOString(), data: Store.s }, null, 1)], { type: 'application/json' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `cube-coach-fortschritt-${new Date().toISOString().slice(0, 10)}.json`;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+          toast('Fortschritt exportiert');
+        });
+        $('[data-import]', el).addEventListener('change', async e => {
+          const f = e.target.files[0]; if (!f) return;
+          try {
+            const o = JSON.parse(await f.text());
+            const d = o && o.app === 'cube-coach' ? o.data : o;
+            if (!d || typeof d !== 'object' || typeof d.cards !== 'object' || !Array.isArray(d.times)) throw new Error('Format');
+            if (!confirm('Aktuellen Fortschritt durch die Datei ersetzen?')) return;
+            Store.replace(d); toast('Fortschritt importiert'); render();
+          } catch (err) { toast('Datei konnte nicht gelesen werden'); }
+          e.target.value = '';
+        });
+        $('[data-speed]', el).addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; set.speed = +b.dataset.v; Store.save(); render(); });
+        $('[data-s3d]', el).addEventListener('change', e => { set.show3d = e.target.checked; Store.save(); });
+        $('[data-insp]', el).addEventListener('change', e => { set.inspection = e.target.checked; Store.save(); });
+        $('[data-reset]', el).addEventListener('click', () => { if (confirm('Wirklich alles löschen? Lektionen, Drill und Zeiten gehen verloren.')) { Store.reset(); render(); toast('Zurückgesetzt'); } });
+      },
+    };
+  };
+
+  /* ---------- Router ---------- */
+  const TABS = [['learn', 'Lernen'], ['drill', 'Drill'], ['timer', 'Timer'], ['sets', 'Sets'], ['more', 'Mehr']];
+  $('#tabs').innerHTML = TABS.map(([id, label]) => `<a href="#/${id}" data-tab="${id}">${ICON[id]}<span>${label}</span></a>`).join('');
+  $('#back').addEventListener('click', () => { const b = $('#back').dataset.href; if (b) location.hash = b; });
+
+  function parseHash() {
+    const parts = (location.hash || '#/learn').replace(/^#\/?/, '').split('/');
+    return { name: parts[0] || 'learn', arg: parts[1] ? decodeURIComponent(parts[1]) : undefined };
+  }
+  let lastRoute = '';
+  function render() {
+    const { name, arg } = parseHash();
+    const fn = VIEWS[name] || VIEWS.learn;
+    if (cleanup) { try { cleanup(); } catch (e) { /* ignore */ } cleanup = null; }
+    const v = fn(arg);
+    const main = $('#view');
+    main.innerHTML = v.html;
+    $('#title').innerHTML = v.brand ? `${BRAND}<span>Cube Coach</span>` : esc(v.title);
+    $('#title').classList.toggle('brand', !!v.brand);
+    const back = $('#back');
+    back.classList.toggle('hidden', !v.back);
+    back.dataset.href = v.back || '';
+    $('#top-actions').innerHTML = v.actions || '';
+    $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === v.tab));
+    if (v.wake) Wake.on('view'); else Wake.off('view');
+    if (v.mount) cleanup = v.mount(main) || null;
+    const r = location.hash;
+    if (r !== lastRoute) { window.scrollTo(0, 0); lastRoute = r; }
+  }
+  window.addEventListener('hashchange', () => { closeOverlay(true); render(); });
+  if (!location.hash) history.replaceState(null, '', '#/learn');
+  render();
+
+  /* ---------- Offline (Service Worker) ---------- */
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    window.addEventListener('load', () => {
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (hadController) toast('Neue Version installiert – beim nächsten Öffnen aktiv');
+      });
+    });
+  }
+
+  // Für Tests/Debugging
+  window.CubeCoach = { Store, CASES, render, openTrainer, openPlayer, caseState };
+})();
+</script>
+</body>
+</html>
