@@ -2528,9 +2528,238 @@ const Logic = (() => {
       });
     },
   });
-  VIEWS.timer = () => ({ title: 'Timer', tab: 'timer', html: '<div class="card empty"><div class="big-ico">⏱</div><p>Der Timer folgt in Phase 4.</p></div>' });
-  VIEWS.sets = () => ({ title: 'Sets', tab: 'sets', html: '<div class="card empty"><div class="big-ico">▦</div><p>Die Übersicht folgt in Phase 4.</p></div>' });
-  VIEWS.more = () => ({ title: 'Mehr', tab: 'more', html: '<div class="card empty"><p>Einstellungen folgen.</p></div>' });
+  /* ---------- Timer ---------- */
+  VIEWS.timer = () => ({
+    title: 'Timer', tab: 'timer', wake: true,
+    html: `<div class="card flat"><div class="row between"><span class="eyebrow">Scramble</span><button class="btn sm ghost" data-new>Neuer Scramble</button></div>
+        <p class="scramble" data-scr></p>
+        <details><summary class="muted small" style="cursor:pointer;min-height:36px">Vorschau des verdrehten Würfels</summary><div data-net style="margin-top:8px"></div></details></div>
+      <div class="timer-pad" data-pad role="button" aria-label="Timer: gedrückt halten, loslassen startet, tippen stoppt"><div class="time" data-time>0.00</div><div class="muted small" data-hint></div></div>
+      <label class="switch card flat" style="margin-top:14px;padding:6px 16px"><span>15 s Inspektion</span><input type="checkbox" data-insp ${Store.s.settings.inspection ? 'checked' : ''}></label>
+      <div class="stat-grid" data-stats></div>
+      <div class="section-title"><h3>Zeiten</h3><button class="btn sm ghost" data-clear>Alle löschen</button></div>
+      <ul class="times" data-times></ul>`,
+    mount(el) {
+      const pad = $('[data-pad]', el), timeEl = $('[data-time]', el), hint = $('[data-hint]', el);
+      let state = 'idle', t0 = 0, insp0 = 0, holdT = null, raf = 0, scramble = Cube.scramble(), swallowUp = false;
+      const HINT = {
+        idle: () => Store.s.settings.inspection ? 'Tippen startet die Inspektion.' : 'Gedrückt halten, bis die Zeit grün wird – loslassen startet.',
+        inspect: () => 'Inspektion – gedrückt halten, loslassen startet.',
+        holding: () => 'Halten …', ready: () => 'Loslassen!', running: () => 'Tippen stoppt.',
+      };
+      const showScr = () => { $('[data-scr]', el).textContent = scramble; $('[data-net]', el).innerHTML = Render.net(Cube.apply(Cube.solved(), scramble)); };
+      function setState(s) {
+        state = s;
+        const inInsp = insp0 && (s === 'inspect' || s === 'holding' || s === 'ready');
+        pad.className = 'timer-pad ' + (s === 'idle' ? '' : s) + (inInsp && s === 'inspect' ? ' inspect' : '');
+        document.body.classList.toggle('timing', s !== 'idle' && (s === 'running' || !!insp0));
+        hint.textContent = (HINT[s] || HINT.idle)();
+      }
+      function inspPenalty() {
+        if (!insp0) return 0;
+        const e = (performance.now() - insp0) / 1000;
+        return e > 17 ? 'dnf' : e > 15 ? 2 : 0;
+      }
+      function tick() {
+        if (state === 'running') timeEl.textContent = Logic.fmt(performance.now() - t0);
+        else if (insp0) {
+          const left = 15 - Math.floor((performance.now() - insp0) / 1000);
+          timeEl.textContent = left > 0 ? String(left) : left > -2 ? '+2' : 'DNF';
+        }
+        raf = requestAnimationFrame(tick);
+      }
+      function down() {
+        if (state === 'running') { stop(); return; }
+        if (state === 'idle' && Store.s.settings.inspection) return;
+        if (state === 'idle' || state === 'inspect') {
+          setState('holding');
+          if (!insp0) timeEl.textContent = '0.00';
+          holdT = setTimeout(() => { if (state === 'holding') setState('ready'); }, 400);
+        }
+      }
+      function up() {
+        if (swallowUp) { swallowUp = false; return; }
+        clearTimeout(holdT);
+        if (state === 'idle' && Store.s.settings.inspection) { insp0 = performance.now(); setState('inspect'); return; }
+        if (state === 'holding') setState(insp0 ? 'inspect' : 'idle');
+        else if (state === 'ready') { penalty = inspPenalty(); insp0 = 0; t0 = performance.now(); setState('running'); }
+      }
+      let penalty = 0;
+      function stop() {
+        const ms = Math.round(performance.now() - t0);
+        Store.s.times.push({ ms, penalty, scramble, at: Date.now() });
+        Store.save();
+        timeEl.textContent = Logic.fmt(Logic.effective({ ms, penalty }));
+        swallowUp = true; insp0 = 0; penalty = 0;
+        setState('idle');
+        scramble = Cube.scramble(); showScr(); drawStats();
+      }
+      function drawStats() {
+        const T = Store.s.times;
+        const st = [['Bestzeit', Logic.fmt(T.length ? Logic.best(T) : null)], ['Ø5', Logic.fmt(Logic.average(T, 5))], ['Ø12', Logic.fmt(Logic.average(T, 12))], ['Anzahl', T.length]];
+        $('[data-stats]', el).innerHTML = st.map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+        const list = T.map((t, i) => [t, i]).reverse().slice(0, 100);
+        $('[data-times]', el).innerHTML = list.length ? list.map(([t, i]) => `<li><span class="n">${i + 1}.</span><span class="t">${Logic.fmt(Logic.effective(t))}${t.penalty === 2 ? '<small class="muted"> (+2)</small>' : ''}</span>
+          <button class="btn ${t.penalty === 2 ? 'on' : ''}" data-p2="${i}">+2</button><button class="btn ${t.penalty === 'dnf' ? 'on' : ''}" data-dnf="${i}">DNF</button><button class="btn" data-del="${i}" aria-label="Zeit löschen">✕</button></li>`).join('')
+          : '<li class="muted">Noch keine Zeiten.</li>';
+      }
+      pad.addEventListener('pointerdown', e => { e.preventDefault(); down(); });
+      pad.addEventListener('pointerup', e => { e.preventDefault(); up(); });
+      pad.addEventListener('pointercancel', () => { clearTimeout(holdT); if (state === 'holding' || state === 'ready') setState(insp0 ? 'inspect' : 'idle'); });
+      pad.addEventListener('contextmenu', e => e.preventDefault());
+      const kd = e => {
+        if (overlay) return;
+        if (state === 'running') { e.preventDefault(); stop(); return; }
+        if (e.code === 'Space' && !e.repeat) { e.preventDefault(); down(); }
+      };
+      const ku = e => { if (e.code === 'Space') { e.preventDefault(); up(); } };
+      document.addEventListener('keydown', kd);
+      document.addEventListener('keyup', ku);
+      $('[data-new]', el).addEventListener('click', () => { scramble = Cube.scramble(); showScr(); });
+      $('[data-insp]', el).addEventListener('change', e => { Store.s.settings.inspection = e.target.checked; Store.save(); setState('idle'); });
+      $('[data-clear]', el).addEventListener('click', () => {
+        if (Store.s.times.length && confirm('Alle Zeiten löschen?')) { Store.s.times = []; Store.save(); drawStats(); }
+      });
+      $('[data-times]', el).addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b) return;
+        const T = Store.s.times;
+        if (b.dataset.p2) { const t = T[+b.dataset.p2]; t.penalty = t.penalty === 2 ? 0 : 2; }
+        else if (b.dataset.dnf) { const t = T[+b.dataset.dnf]; t.penalty = t.penalty === 'dnf' ? 0 : 'dnf'; }
+        else if (b.dataset.del) { T.splice(+b.dataset.del, 1); }
+        Store.save(); drawStats();
+      });
+      showScr(); drawStats(); setState('idle'); tick();
+      return () => { cancelAnimationFrame(raf); document.removeEventListener('keydown', kd); document.removeEventListener('keyup', ku); document.body.classList.remove('timing'); clearTimeout(holdT); };
+    },
+  });
+
+  /* ---------- Sets & Übersicht ---------- */
+  const tile = c => {
+    const k = Store.s.cards[c.id];
+    const v = c.views[0];
+    return `<a class="tile ${k ? 'b' + k.box + ' indrill' : ''}" href="#/case/${c.id}">${dia(c, v === 'isoD' ? 'iso' : v)}<b>${esc(c.short || c.name)}</b></a>`;
+  };
+  VIEWS.sets = (id = 'pll') => {
+    const set = DATA.sets.find(s => s.id === id) || DATA.sets[1];
+    const cases = casesOfSet(set.id);
+    const inDrill = cases.filter(c => Store.s.cards[c.id]).length;
+    const mastered = cases.filter(c => (Store.s.cards[c.id] || {}).box >= 4).length;
+    let h = `<div class="seg" style="margin-bottom:14px">${DATA.sets.map(s => `<button data-set="${s.id}" class="${s.id === set.id ? 'on' : ''}">${esc(s.name)}</button>`).join('')}</div>
+      <div class="card"><div class="eyebrow">${esc(set.full || 'Lernpfad')}</div><h2 style="margin:2px 0 6px">${esc(set.name)}</h2><p class="muted">${esc(set.description)}</p>`;
+    if (cases.length) {
+      h += `<div class="progress" style="margin:10px 0 6px"><i style="width:${(mastered / cases.length) * 100}%"></i></div>
+        <p class="small muted">${inDrill} von ${cases.length} im Drill · ${mastered} sicher (Box 4–5)</p>
+        <div class="btns two" style="margin-top:8px"><button class="btn primary" data-addall>Alle in den Drill</button><button class="btn" data-rmall ${inDrill ? '' : 'disabled'}>Alle entfernen</button></div>`;
+    }
+    h += '</div>';
+    h += `<div class="legend" style="margin:0 2px 8px"><span><i style="border-color:var(--b0)"></i>neu</span>${[1, 2, 3, 4, 5].map(b => `<span><i style="border-color:var(--b${b})"></i>Box ${b}</span>`).join('')}</div>`;
+    if (!cases.length) {
+      h += `<div class="card flat"><h3>${set.size} Fälle geplant</h3><p class="muted">Die Struktur steht: Sobald Fälle mit Algorithmus eingetragen sind, erscheinen sie hier und im Drill – Bilder und Tests entstehen automatisch aus den Algorithmen.</p>
+        <ul>${(set.groups || []).map(g => `<li>${esc(g)}</li>`).join('')}</ul></div>`;
+    } else {
+      const groups = new Map();
+      for (const c of cases) {
+        const g = c.lesson ? `Lektion ${c.lesson.nr} · ${c.lesson.title}` : c.group;
+        if (!groups.has(g)) groups.set(g, []);
+        groups.get(g).push(c);
+      }
+      for (const [g, list] of groups) h += `<div class="section-title"><h3>${esc(g)}</h3><span class="muted small">${list.length}</span></div><div class="grid">${list.map(tile).join('')}</div>`;
+    }
+    return {
+      title: 'Sets & Übersicht', tab: 'sets', html: h,
+      mount(el) {
+        el.addEventListener('click', e => {
+          const b = e.target.closest('button'); if (!b) return;
+          if (b.dataset.set) location.hash = '#/sets/' + b.dataset.set;
+          else if ('addall' in b.dataset) {
+            let n = 0;
+            for (const c of cases) if (!Store.s.cards[c.id]) { Store.s.cards[c.id] = Logic.newCard(now()); n++; }
+            Store.save(); toast(n ? `${n} Fälle in den Drill aufgenommen` : 'Alle Fälle sind schon im Drill'); render();
+          } else if ('rmall' in b.dataset) {
+            if (!confirm(`Alle ${set.name}-Fälle samt Fortschritt aus dem Drill entfernen?`)) return;
+            for (const c of cases) delete Store.s.cards[c.id];
+            Store.save(); render();
+          }
+        });
+      },
+    };
+  };
+
+  VIEWS.case = id => {
+    const c = CASES.get(id);
+    if (!c) return VIEWS.sets();
+    const k = Store.s.cards[c.id];
+    const views = c.kind === 'move' ? ['iso'] : [...new Set([...c.views, 'iso'])];
+    let h = `<div class="eyebrow">${esc(c.lesson ? `Lektion ${c.lesson.nr} · ${c.lesson.title}` : `${c.set.name} · ${c.group || ''}`)}</div>
+      <h2 style="margin:2px 0 12px">${esc(c.name)}</h2>
+      <div class="card"><div class="dias lg">${views.map(v => dia(c, v)).join('')}</div>
+      <dl class="kv" style="margin-top:12px"><dt>Erkennen</dt><dd>${esc(c.recognize || '')}</dd>${c.hold ? `<dt>Halten</dt><dd>${esc(c.hold)}</dd>` : ''}</dl>
+      <div style="margin:14px 0 4px">${algHTML(c)}</div>
+      ${c.auf ? `<p class="muted small">Grau: abschliessende U-Drehung (AUF), damit die obere Ebene passt.</p>` : ''}
+      <p class="muted small">${Cube.parse(c.full).length} Züge${c.kind === 'move' ? '' : ` · Aufsetzen: <span class="alg sm">${esc(Cube.invertStr(c.full))}</span>`}</p>
+      ${caseButtons(c)}</div>
+      <div class="card"><label class="switch"><span><b>Im Drill</b><br><span class="muted small">${k ? `Box ${k.box} · fällig ${inTime(k.due)}` : 'Noch nicht aufgenommen'}</span></span><input type="checkbox" data-drill ${k ? 'checked' : ''}></label>${statsLine(c.id)}</div>`;
+    return {
+      title: c.short ? (c.set ? c.set.name + ' ' + c.short : c.name) : 'Fall', back: c.lesson ? '#/lesson/' + c.lesson.id : '#/sets/' + c.setId, tab: 'sets', html: h,
+      mount(el) {
+        bindCaseButtons(el);
+        $('[data-drill]', el).addEventListener('change', e => {
+          if (e.target.checked) Store.s.cards[c.id] = Store.s.cards[c.id] || Logic.newCard(now());
+          else delete Store.s.cards[c.id];
+          Store.save(); render();
+        });
+      },
+    };
+  };
+
+  /* ---------- Mehr: Einstellungen, Export/Import ---------- */
+  VIEWS.more = () => {
+    const s = Store.s, set = s.settings;
+    const reviews = Object.values(s.cards).reduce((a, c) => a + c.reps, 0);
+    const sw = 'serviceWorker' in navigator && navigator.serviceWorker.controller;
+    const h = `<div class="card"><div class="eyebrow">Dein Stand</div>
+        <div class="stat-grid" style="margin-top:8px"><div class="stat"><b>${Object.keys(s.learned).length}/${LESSONS.length}</b><span>Lektionen</span></div><div class="stat"><b>${Object.keys(s.cards).length}</b><span>im Drill</span></div><div class="stat"><b>${reviews}</b><span>Wdh.</span></div><div class="stat"><b>${s.times.length}</b><span>Solves</span></div></div></div>
+      <div class="card stack"><div class="eyebrow">Fortschritt sichern</div>
+        <p class="muted small">Alles wird nur auf diesem Gerät gespeichert. Exportiere eine JSON-Datei als Backup oder um auf ein anderes Gerät umzuziehen.</p>
+        <div class="btns two"><button class="btn primary" data-export>Exportieren</button><label class="btn">Importieren<input type="file" accept="application/json,.json" data-import hidden></label></div></div>
+      <div class="card"><div class="eyebrow">Einstellungen</div>
+        <div class="switch" style="cursor:default"><span>Animationstempo</span><div class="seg" data-speed>${[0.5, 1, 1.5, 2].map(v => `<button data-v="${v}" class="${set.speed === v ? 'on' : ''}">${String(v).replace('.', ',')}×</button>`).join('')}</div></div>
+        <label class="switch"><span>3D-Hilfe im Zug-für-Zug-Modus</span><input type="checkbox" data-s3d ${set.show3d ? 'checked' : ''}></label>
+        <label class="switch"><span>15 s Inspektion im Timer</span><input type="checkbox" data-insp ${set.inspection ? 'checked' : ''}></label></div>
+      <div class="card"><div class="eyebrow">App</div>
+        <p>${sw ? '<b style="color:var(--good)">✓ Offline bereit</b> – die App funktioniert ohne Internet.' : 'Offline-Speicher wird beim nächsten Laden eingerichtet.'}</p>
+        <p class="muted small">Cube Coach · Farbschema: Gelb oben, Grün vorne, Weiss unten. Alle Fallbilder werden aus den Algorithmen berechnet.</p>
+        <button class="btn bad block" data-reset style="margin-top:8px">Alle Daten zurücksetzen</button></div>`;
+    return {
+      title: 'Mehr', tab: 'more', html: h,
+      mount(el) {
+        $('[data-export]', el).addEventListener('click', () => {
+          const blob = new Blob([JSON.stringify({ app: 'cube-coach', version: 1, exported: new Date().toISOString(), data: Store.s }, null, 1)], { type: 'application/json' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `cube-coach-fortschritt-${new Date().toISOString().slice(0, 10)}.json`;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+          toast('Fortschritt exportiert');
+        });
+        $('[data-import]', el).addEventListener('change', async e => {
+          const f = e.target.files[0]; if (!f) return;
+          try {
+            const o = JSON.parse(await f.text());
+            const d = o && o.app === 'cube-coach' ? o.data : o;
+            if (!d || typeof d !== 'object' || typeof d.cards !== 'object' || !Array.isArray(d.times)) throw new Error('Format');
+            if (!confirm('Aktuellen Fortschritt durch die Datei ersetzen?')) return;
+            Store.replace(d); toast('Fortschritt importiert'); render();
+          } catch (err) { toast('Datei konnte nicht gelesen werden'); }
+          e.target.value = '';
+        });
+        $('[data-speed]', el).addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; set.speed = +b.dataset.v; Store.save(); render(); });
+        $('[data-s3d]', el).addEventListener('change', e => { set.show3d = e.target.checked; Store.save(); });
+        $('[data-insp]', el).addEventListener('change', e => { set.inspection = e.target.checked; Store.save(); });
+        $('[data-reset]', el).addEventListener('click', () => { if (confirm('Wirklich alles löschen? Lektionen, Drill und Zeiten gehen verloren.')) { Store.reset(); render(); toast('Zurückgesetzt'); } });
+      },
+    };
+  };
 
   /* ---------- Router ---------- */
   const TABS = [['learn', 'Lernen'], ['drill', 'Drill'], ['timer', 'Timer'], ['sets', 'Sets'], ['more', 'Mehr']];
