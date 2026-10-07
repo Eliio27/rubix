@@ -279,6 +279,13 @@ body.timing .timer-pad { position: fixed; inset: 0; z-index: 80; border-radius: 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+.btns .btn { padding: 0 12px; white-space: nowrap; }
+.trainer-vis { display: flex; gap: 10px; align-items: center; justify-content: center; }
+.trainer-vis > * { flex: 1 1 0; min-width: 0; }
+.trainer-vis .dias { flex-direction: column; gap: 6px; }
+.trainer-vis .dias > .dia { flex: none; max-width: 230px; max-height: 32vh; width: 100%; }
+.trainer-vis .c3 { max-width: 220px; }
+.trainer-vis:has(.c3wrap:not(.hidden)) .dias > .dia { max-height: 22vh; }
 </style>
 </head>
 <body>
@@ -657,10 +664,726 @@ const Render = (() => {
   return { MASKS, color, top, iso, net, moveArrows, arrow2d };
 })();
 </script>
+<script id="cube3d">
+/* ===== 3D-Würfel (CSS 3D Transforms) – nur Hilfsanimation ===== */
+const Cube3D = (() => {
+  'use strict';
+  const FACE_T = [
+    [[0, 0, 1], 'translateZ(H)'], [[0, 0, -1], 'rotateY(180deg) translateZ(H)'],
+    [[1, 0, 0], 'rotateY(90deg) translateZ(H)'], [[-1, 0, 0], 'rotateY(-90deg) translateZ(H)'],
+    [[0, 1, 0], 'rotateX(90deg) translateZ(H)'], [[0, -1, 0], 'rotateX(-90deg) translateZ(H)'],
+  ];
+  // Welt-Rotation (rechtshändig, y oben) -> CSS-Rotation (y unten)
+  const CSS_SIGN = { x: -1, y: 1, z: -1 };
 
+  class View {
+    constructor(host, o = {}) {
+      this.mask = o.mask || 'full';
+      this.rx = o.rx ?? -27; this.ry = o.ry ?? -34;
+      host.innerHTML = '<div class="c3" aria-label="3D-Würfel, zum Drehen ziehen"><div class="c3-cube"></div></div>';
+      this.root = host.firstElementChild;
+      this.cubeEl = this.root.firstElementChild;
+      this.cubies = [];
+      this.busy = false;
+      this.build();
+      this.drag();
+      this.state = Cube.solved();
+      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.layout()) : null;
+      if (ro) ro.observe(this.root);
+      this.layout();
+    }
+    build() {
+      for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+        if (!x && !y && !z) continue;
+        const el = document.createElement('div');
+        el.className = 'c3-cubie';
+        const faces = [];
+        for (const [n, t] of FACE_T) {
+          const f = document.createElement('div');
+          f.className = 'c3-face';
+          f.dataset.t = t;
+          const outer = n.some((v, i) => v !== 0 && v === [x, y, z][i]);
+          let st = null;
+          if (outer) { st = document.createElement('i'); f.appendChild(st); }
+          el.appendChild(f);
+          faces.push({ n, f, st, idx: outer ? Cube.indexOf([x, y, z], n) : -1 });
+        }
+        this.cubeEl.appendChild(el);
+        this.cubies.push({ pos: [x, y, z], el, faces });
+      }
+    }
+    layout() {
+      const w = this.root.clientWidth || 240;
+      const S = Math.round(w / 4.6);
+      this.S = S;
+      for (const c of this.cubies) {
+        c.el.style.width = c.el.style.height = S + 'px';
+        c.el.style.left = c.el.style.top = (-S / 2) + 'px';
+        c.base = `translate3d(${c.pos[0] * S}px, ${-c.pos[1] * S}px, ${c.pos[2] * S}px)`;
+        c.el.style.transform = c.base;
+        for (const fc of c.faces) fc.f.style.transform = fc.f.dataset.t.replace('H', S / 2 + 'px');
+      }
+      this.applyView();
+    }
+    applyView() { this.cubeEl.style.transform = `rotateX(${this.rx}deg) rotateY(${this.ry}deg)`; }
+    drag() {
+      let p = null;
+      this.root.addEventListener('pointerdown', e => { p = [e.clientX, e.clientY, this.rx, this.ry]; this.root.setPointerCapture(e.pointerId); });
+      this.root.addEventListener('pointermove', e => {
+        if (!p) return;
+        this.ry = p[3] + (e.clientX - p[0]) * 0.5;
+        this.rx = Math.max(-85, Math.min(85, p[2] - (e.clientY - p[1]) * 0.5));
+        this.applyView();
+      });
+      const end = () => { p = null; };
+      this.root.addEventListener('pointerup', end);
+      this.root.addEventListener('pointercancel', end);
+    }
+    setState(st) { this.state = st.slice(); this.paint(); }
+    paint() {
+      for (const c of this.cubies) for (const fc of c.faces) if (fc.st) fc.st.style.background = Render.color(this.state, fc.idx, this.mask);
+    }
+    // Animiert einen Zug; danach wird der Zustand übernommen
+    animate(mv, ms = 400) {
+      if (typeof mv === 'string') mv = Cube.parse(mv)[0];
+      const [axis, layers, q] = Cube.MOVE_DEFS[mv.base];
+      const ai = Cube.AX[axis];
+      const deg = (mv.amount === 2 ? 180 : 90) * (mv.amount === 3 ? -q : q) * CSS_SIGN[axis];
+      const fn = 'rotate' + axis.toUpperCase();
+      const moving = this.cubies.filter(c => layers.includes(c.pos[ai]));
+      this.busy = true;
+      return new Promise(resolve => {
+        const reduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const dur = reduce ? 0 : ms * (mv.amount === 2 ? 1.4 : 1);
+        for (const c of moving) { c.el.style.transition = 'none'; c.el.style.transform = `${fn}(0deg) ${c.base}`; }
+        void this.cubeEl.offsetWidth;
+        for (const c of moving) {
+          c.el.style.transition = `transform ${dur}ms cubic-bezier(.45,.05,.35,1)`;
+          c.el.style.transform = `${fn}(${deg}deg) ${c.base}`;
+        }
+        setTimeout(() => {
+          for (const c of moving) { c.el.style.transition = 'none'; c.el.style.transform = c.base; }
+          this.state = Cube.applyMove(this.state, mv);
+          this.paint();
+          this.busy = false;
+          resolve();
+        }, dur + 30);
+      });
+    }
+  }
+
+  // Player: spielt einen Algorithmus ab (Play, Pause, Schritt vor/zurück, Tempo)
+  class Player {
+    constructor(host, { alg, start, mask, speed = 1, onStep } = {}) {
+      this.moves = Cube.parse(alg);
+      this.start = start || Cube.caseState(alg);
+      this.i = 0; this.playing = false; this.speed = speed; this.onStep = onStep;
+      host.innerHTML = `<div class="player stack">
+        <div class="c3host"></div>
+        <div class="moves" data-moves></div>
+        <div class="player-ctrl">
+          <button class="btn" data-a="reset" aria-label="Zum Anfang"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 6v12l-9-6z"/></svg></button>
+          <button class="btn" data-a="back" aria-label="Schritt zurück"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 6v12l-8-6zM18 6v12h-2V6z"/></svg></button>
+          <button class="btn primary" data-a="play" aria-label="Abspielen"></button>
+          <button class="btn" data-a="fwd" aria-label="Schritt vor"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6v12l8-6zM6 6v12h2V6z"/></svg></button>
+          <button class="btn" data-a="end" aria-label="Zum Ende"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 6v12l9-6z"/></svg></button>
+        </div>
+        <div class="speed"><span class="muted small">Tempo</span><div class="seg" data-speed>${[0.5, 1, 1.5, 2].map(s => `<button data-s="${s}">${String(s).replace('.', ',')}×</button>`).join('')}</div></div>
+      </div>`;
+      this.host = host;
+      this.view = new View(host.querySelector('.c3host'), { mask });
+      this.view.setState(this.start);
+      host.querySelector('.player-ctrl').addEventListener('click', e => {
+        const b = e.target.closest('[data-a]'); if (!b) return;
+        ({ reset: () => this.reset(), back: () => this.back(), play: () => this.toggle(), fwd: () => this.fwd(), end: () => this.end() })[b.dataset.a]();
+      });
+      host.querySelector('[data-speed]').addEventListener('click', e => {
+        const b = e.target.closest('[data-s]'); if (!b) return;
+        this.speed = +b.dataset.s; this.ui();
+      });
+      host.querySelector('[data-moves]').addEventListener('click', e => {
+        const b = e.target.closest('[data-i]'); if (b) this.jump(+b.dataset.i);
+      });
+      this.ui();
+    }
+    get ms() { return 420 / this.speed; }
+    ui() {
+      const m = this.host.querySelector('[data-moves]');
+      m.innerHTML = this.moves.map((mv, k) => `<button class="mv ${k < this.i ? 'done' : k === this.i ? 'now' : ''}" data-i="${k}">${Cube.moveStr(mv)}</button>`).join('');
+      const play = this.host.querySelector('[data-a=play]');
+      play.innerHTML = this.playing
+        ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>';
+      play.setAttribute('aria-label', this.playing ? 'Pause' : 'Abspielen');
+      this.host.querySelectorAll('[data-s]').forEach(b => b.classList.toggle('on', +b.dataset.s === this.speed));
+      if (this.onStep) this.onStep(this.i, this.moves.length);
+    }
+    async fwd() {
+      if (this.view.busy || this.i >= this.moves.length) return;
+      await this.view.animate(this.moves[this.i], this.ms); this.i++; this.ui();
+    }
+    async back() {
+      if (this.view.busy || this.i <= 0) return;
+      this.playing = false;
+      const mv = this.moves[this.i - 1];
+      await this.view.animate({ base: mv.base, amount: 4 - mv.amount }, this.ms); this.i--; this.ui();
+    }
+    async toggle() {
+      if (this.playing) { this.playing = false; this.ui(); return; }
+      if (this.i >= this.moves.length) this.reset();
+      this.playing = true; this.ui();
+      while (this.playing && this.i < this.moves.length) {
+        await this.view.animate(this.moves[this.i], this.ms);
+        this.i++; this.ui();
+        if (this.playing) await new Promise(r => setTimeout(r, 90 / this.speed));
+      }
+      this.playing = false; this.ui();
+    }
+    jump(k) {
+      if (this.view.busy) return;
+      this.playing = false;
+      this.i = Math.max(0, Math.min(this.moves.length, k));
+      this.view.setState(Cube.apply(this.start, this.moves.slice(0, this.i)));
+      this.ui();
+    }
+    reset() { this.jump(0); }
+    end() { this.jump(this.moves.length); }
+    stop() { this.playing = false; }
+  }
+  return { View, Player };
+})();
+</script>
+<script id="logic">
+/* ===== Logik: Leitner-System und Timer-Statistik (ohne DOM, testbar) ===== */
+const Logic = (() => {
+  'use strict';
+  const MIN = 6e4, DAY = 864e5;
+  // Wartezeit nach Box (Index = Box 1..5)
+  const INTERVALS = [0, 10 * MIN, 1 * DAY, 3 * DAY, 7 * DAY, 16 * DAY];
+  const BOXES = 5;
+
+  const newCard = now => ({ box: 1, due: now, reps: 0, hits: 0, last: null, added: now });
+
+  // grade: 'good' = sofort gewusst, 'hard' = mit Mühe, 'again' = nicht gewusst
+  function review(card, grade, now) {
+    const c = Object.assign(newCard(now), card);
+    if (grade === 'good') c.box = Math.min(BOXES, c.box + 1);
+    else if (grade === 'again') c.box = 1;
+    else c.box = Math.max(1, c.box);
+    c.due = now + INTERVALS[c.box] * (grade === 'hard' && c.box > 1 ? 0.6 : 1);
+    c.reps += 1;
+    c.hits += grade === 'good' ? 1 : grade === 'hard' ? 0.5 : 0;
+    c.last = now;
+    return c;
+  }
+  const dueIds = (cards, ids, now) => ids.filter(id => cards[id] && cards[id].due <= now).sort((a, b) => cards[a].due - cards[b].due);
+  const nextDue = (cards, ids) => ids.reduce((m, id) => cards[id] && cards[id].due < m ? cards[id].due : m, Infinity);
+  const hitRate = c => c && c.reps ? c.hits / c.reps : null;
+
+  // Timer
+  const effective = t => t.penalty === 'dnf' ? Infinity : t.ms + (t.penalty === 2 ? 2000 : 0);
+  // WCA-Mittelwert der letzten n Zeiten: beste und schlechteste fallen weg
+  function average(times, n) {
+    if (times.length < n) return null;
+    const v = times.slice(-n).map(effective).sort((a, b) => a - b);
+    const trim = Math.max(1, Math.ceil(n * 0.05));
+    const mid = v.slice(trim, n - trim);
+    if (mid.some(x => x === Infinity)) return Infinity;
+    return Math.round(mid.reduce((a, b) => a + b, 0) / mid.length);
+  }
+  const best = times => times.reduce((m, t) => Math.min(m, effective(t)), Infinity);
+  const pad = (n, l = 2) => String(n).padStart(l, '0');
+  function fmt(ms) {
+    if (ms == null) return '–';
+    if (ms === Infinity) return 'DNF';
+    const cs = Math.floor(ms / 10), s = Math.floor(cs / 100), m = Math.floor(s / 60);
+    return m ? `${m}:${pad(s % 60)}.${pad(cs % 100)}` : `${s}.${pad(cs % 100)}`;
+  }
+  return { INTERVALS, BOXES, MIN, DAY, newCard, review, dueIds, nextDue, hitRate, effective, average, best, fmt };
+})();
+</script>
 <script id="data" type="application/json">
 {
  "version": 1,
+ "lessons": [
+  {
+   "id": "l0",
+   "nr": 0,
+   "title": "Notation & Würfel halten",
+   "short": "Notation",
+   "mask": "full",
+   "views": [
+    "iso"
+   ],
+   "goal": "Du kennst die Zugnotation und hältst den Würfel immer gleich: Gelb oben, Grün vorne.",
+   "goalAlg": "",
+   "goalViews": [
+    "iso"
+   ],
+   "intro": [
+    "Jede Seite hat einen Buchstaben: R = rechts, L = links, U = oben (up), D = unten (down), F = vorne (front), B = hinten (back).",
+    "Ein Buchstabe allein heisst: diese Seite eine Vierteldrehung im Uhrzeigersinn – so, als würdest du direkt auf diese Seite schauen.",
+    "Ein Strich (R′, geschrieben R') heisst gegen den Uhrzeigersinn. Eine 2 (R2) heisst halbe Drehung – die Richtung ist dann egal.",
+    "Halte den Würfel in diesem Kurs immer mit Gelb oben und Grün vorne. Dann ist Rot links, Orange rechts, Blau hinten und Weiss unten.",
+    "Die Mittelsteine bewegen sich bei R, L, U, D, F und B nie. Sie zeigen dir, welche Farbe auf welche Seite gehört.",
+    "Kleinbuchstaben (r, u …) drehen zwei Schichten gleichzeitig, M/E/S die mittlere Scheibe, x/y/z den ganzen Würfel. Das brauchst du erst später."
+   ],
+   "cases": [
+    {
+     "id": "n-R",
+     "name": "R",
+     "kind": "move",
+     "alg": "R",
+     "recognize": "Rechte Seite nach oben",
+     "hold": "Im Uhrzeigersinn, wenn du von rechts auf die Seite schaust. Die vordere Spalte rechts wandert nach oben."
+    },
+    {
+     "id": "n-Ri",
+     "name": "R'",
+     "kind": "move",
+     "alg": "R'",
+     "recognize": "Rechte Seite nach unten",
+     "hold": "Gegen den Uhrzeigersinn (von rechts gesehen). Die vordere Spalte rechts wandert nach unten."
+    },
+    {
+     "id": "n-L",
+     "name": "L",
+     "kind": "move",
+     "alg": "L",
+     "recognize": "Linke Seite nach unten",
+     "hold": "Im Uhrzeigersinn, wenn du von links auf die Seite schaust. Die vordere Spalte links wandert nach unten."
+    },
+    {
+     "id": "n-Li",
+     "name": "L'",
+     "kind": "move",
+     "alg": "L'",
+     "recognize": "Linke Seite nach oben",
+     "hold": "Gegen den Uhrzeigersinn (von links gesehen). Die vordere Spalte links wandert nach oben."
+    },
+    {
+     "id": "n-U",
+     "name": "U",
+     "kind": "move",
+     "alg": "U",
+     "recognize": "Obere Ebene nach links",
+     "hold": "Im Uhrzeigersinn von oben gesehen. Die vordere obere Reihe wandert nach links."
+    },
+    {
+     "id": "n-Ui",
+     "name": "U'",
+     "kind": "move",
+     "alg": "U'",
+     "recognize": "Obere Ebene nach rechts",
+     "hold": "Gegen den Uhrzeigersinn von oben gesehen. Die vordere obere Reihe wandert nach rechts."
+    },
+    {
+     "id": "n-D",
+     "name": "D",
+     "kind": "move",
+     "alg": "D",
+     "recognize": "Untere Ebene nach rechts",
+     "hold": "Im Uhrzeigersinn von unten gesehen. Die vordere untere Reihe wandert nach rechts."
+    },
+    {
+     "id": "n-Di",
+     "name": "D'",
+     "kind": "move",
+     "alg": "D'",
+     "recognize": "Untere Ebene nach links",
+     "hold": "Gegen den Uhrzeigersinn von unten gesehen. Die vordere untere Reihe wandert nach links."
+    },
+    {
+     "id": "n-F",
+     "name": "F",
+     "kind": "move",
+     "alg": "F",
+     "recognize": "Vorderseite im Uhrzeigersinn",
+     "hold": "Du schaust auf die Vorderseite und drehst sie wie einen Uhrzeiger. Oben wandert nach rechts."
+    },
+    {
+     "id": "n-Fi",
+     "name": "F'",
+     "kind": "move",
+     "alg": "F'",
+     "recognize": "Vorderseite gegen den Uhrzeigersinn",
+     "hold": "Du schaust auf die Vorderseite und drehst sie gegen den Uhrzeiger. Oben wandert nach links."
+    },
+    {
+     "id": "n-B",
+     "name": "B",
+     "kind": "move",
+     "alg": "B",
+     "recognize": "Rückseite im Uhrzeigersinn (von hinten)",
+     "hold": "Von hinten gesehen im Uhrzeigersinn. Von vorne betrachtet wandert die obere Reihe hinten nach links."
+    },
+    {
+     "id": "n-Bi",
+     "name": "B'",
+     "kind": "move",
+     "alg": "B'",
+     "recognize": "Rückseite gegen den Uhrzeigersinn (von hinten)",
+     "hold": "Von hinten gesehen gegen den Uhrzeiger. Von vorne betrachtet wandert die obere Reihe hinten nach rechts."
+    }
+   ]
+  },
+  {
+   "id": "l1",
+   "nr": 1,
+   "title": "Weisses Kreuz",
+   "short": "Kreuz",
+   "mask": "cross",
+   "views": [
+    "iso",
+    "isoD"
+   ],
+   "goalViews": [
+    "isoD"
+   ],
+   "goal": "Unten entsteht ein weisses Kreuz. Jede weisse Kante passt mit ihrer zweiten Farbe zur Mitte ihrer Seite.",
+   "intro": [
+    "Halte Weiss unten und Gelb oben. Das Kreuz baust du Kante für Kante.",
+    "Suche eine Kante mit Weiss, am einfachsten in der oberen Ebene. Ihre zweite Farbe sagt dir, zu welcher Mitte sie gehört.",
+    "Drehe den ganzen Würfel so, dass die passende Mitte vorne ist. Mit U bringst du die Kante nach vorne oben.",
+    "Kippe den Würfel ab und zu, um unten nachzuschauen. Die schon fertigen Kanten dürfen nicht verloren gehen."
+   ],
+   "tip": "Liegt eine weisse Kante unten am falschen Platz: Halte sie vorne und mach F2 – dann ist sie oben.",
+   "cases": [
+    {
+     "id": "kr-oben",
+     "name": "Weiss zeigt nach oben",
+     "alg": "F2",
+     "recognize": "Die Kante liegt oben vorne, Weiss zeigt nach oben. Die vordere Farbe der Kante passt zur vorderen Mitte.",
+     "hold": "Drehe U, bis die Kante über der passenden Mitte steht, und halte diese Seite vorne."
+    },
+    {
+     "id": "kr-vorne",
+     "name": "Weiss zeigt nach vorne",
+     "alg": "U' R' F R",
+     "recognize": "Die Kante liegt oben vorne, aber Weiss zeigt nach vorne. Die Farbe oben auf der Kante passt zur vorderen Mitte.",
+     "hold": "Vorne ist die Mitte mit der Farbe, die oben auf der Kante liegt."
+    },
+    {
+     "id": "kr-mitte",
+     "name": "Kante in der mittleren Ebene",
+     "alg": "F",
+     "recognize": "Die Kante steckt vorne rechts in der mittleren Ebene. Weiss zeigt nach rechts, die andere Farbe passt zur vorderen Mitte.",
+     "hold": "Steckt sie vorne links (Weiss zeigt nach links), nimm F' statt F."
+    },
+    {
+     "id": "kr-verkehrt",
+     "name": "Kante unten verkehrt",
+     "alg": "F' D R' D'",
+     "recognize": "Die Kante sitzt schon unten vorne, aber Weiss zeigt nach vorne statt nach unten.",
+     "hold": "Halte die verkehrte Kante vorne. D verdreht das Kreuz kurz, D' dreht es wieder zurück."
+    }
+   ]
+  },
+  {
+   "id": "l2",
+   "nr": 2,
+   "title": "Weisse Ecken",
+   "short": "Ecken",
+   "mask": "firstLayer",
+   "views": [
+    "iso",
+    "isoD"
+   ],
+   "goalViews": [
+    "isoD",
+    "iso"
+   ],
+   "goal": "Die ganze weisse Seite ist fertig, und die erste Ebene passt rundherum zu den Mitten.",
+   "intro": [
+    "Suche oben eine Ecke mit Weiss. Ihre zwei anderen Farben zeigen, wohin sie gehört: zwischen die Mitten dieser beiden Farben.",
+    "Drehe U, bis die Ecke genau über ihrem Platz steht, und halte den Würfel so, dass dieser Platz vorne rechts unten ist.",
+    "Jetzt wiederholst du R U R' U' – je nach Richtung des weissen Stickers 1-, 3- oder 5-mal. Die Ecke findet ihren Platz von selbst."
+   ],
+   "tip": "Sitzt eine weisse Ecke unten am falschen Platz: Halte sie vorne rechts und mach einmal R U R' U' – dann ist sie oben.",
+   "cases": [
+    {
+     "id": "ec-rechts",
+     "name": "Weiss zeigt nach rechts",
+     "alg": "R U R' U'",
+     "recognize": "Die Ecke steht oben vorne rechts über ihrem Platz, Weiss zeigt nach rechts.",
+     "hold": "Platz der Ecke vorne rechts unten. 1× R U R' U'."
+    },
+    {
+     "id": "ec-oben",
+     "name": "Weiss zeigt nach oben",
+     "alg": "(R U R' U')3",
+     "recognize": "Die Ecke steht oben vorne rechts über ihrem Platz, Weiss zeigt nach oben.",
+     "hold": "Platz der Ecke vorne rechts unten. 3× R U R' U'."
+    },
+    {
+     "id": "ec-vorne",
+     "name": "Weiss zeigt nach vorne",
+     "alg": "(R U R' U')5",
+     "recognize": "Die Ecke steht oben vorne rechts über ihrem Platz, Weiss zeigt nach vorne.",
+     "hold": "Platz der Ecke vorne rechts unten. 5× R U R' U'."
+    },
+    {
+     "id": "ec-unten-r",
+     "name": "Ecke unten verdreht (Weiss rechts)",
+     "alg": "(R U R' U')2",
+     "recognize": "Die Ecke sitzt schon an ihrem Platz vorne rechts unten, aber Weiss zeigt nach rechts.",
+     "hold": "Verdrehte Ecke vorne rechts unten. 2× R U R' U'."
+    },
+    {
+     "id": "ec-unten-v",
+     "name": "Ecke unten verdreht (Weiss vorne)",
+     "alg": "(R U R' U')4",
+     "recognize": "Die Ecke sitzt schon an ihrem Platz vorne rechts unten, aber Weiss zeigt nach vorne.",
+     "hold": "Verdrehte Ecke vorne rechts unten. 4× R U R' U'."
+    }
+   ]
+  },
+  {
+   "id": "l3",
+   "nr": 3,
+   "title": "Zweite Ebene",
+   "short": "2. Ebene",
+   "mask": "f2l",
+   "views": [
+    "iso"
+   ],
+   "goalViews": [
+    "iso"
+   ],
+   "goal": "Die unteren zwei Ebenen sind fertig. Nur die gelbe Ebene oben fehlt noch.",
+   "intro": [
+    "Weiss bleibt unten, Gelb oben. Suche oben eine Kante ohne Gelb.",
+    "Drehe U, bis die vordere Farbe der Kante zur vorderen Mitte passt – es entsteht ein senkrechter Strich.",
+    "Die obere Farbe der Kante zeigt dir die Richtung: Passt sie zur rechten Mitte, muss die Kante nach rechts, sonst nach links."
+   ],
+   "tip": "Findest du oben keine Kante ohne Gelb, steckt eine Kante verkehrt in der mittleren Ebene: Hole sie mit dem Rechts-Algorithmus heraus.",
+   "cases": [
+    {
+     "id": "zw-rechts",
+     "name": "Kante nach rechts",
+     "alg": "U R U' R' U' F' U F",
+     "recognize": "Kante oben vorne. Die vordere Farbe passt zur vorderen Mitte, die obere Farbe zur rechten Mitte.",
+     "hold": "Strich vorne, Ziel vorne rechts."
+    },
+    {
+     "id": "zw-links",
+     "name": "Kante nach links",
+     "alg": "U' L' U L U F U' F'",
+     "recognize": "Kante oben vorne. Die vordere Farbe passt zur vorderen Mitte, die obere Farbe zur linken Mitte.",
+     "hold": "Strich vorne, Ziel vorne links."
+    },
+    {
+     "id": "zw-verkehrt",
+     "name": "Kante verkehrt eingesetzt",
+     "alg": "(U R U' R' U' F' U F) U2 (U R U' R' U' F' U F)",
+     "recognize": "Die Kante sitzt vorne rechts in der mittleren Ebene, aber ihre Farben sind vertauscht.",
+     "hold": "Verkehrte Kante vorne rechts. Der erste Teil holt sie heraus, nach U2 setzt der zweite sie richtig ein."
+    }
+   ]
+  },
+  {
+   "id": "l4",
+   "nr": 4,
+   "title": "Gelbes Kreuz",
+   "short": "Gelbes Kreuz",
+   "mask": "llEdges",
+   "views": [
+    "top",
+    "iso"
+   ],
+   "goalViews": [
+    "top",
+    "iso"
+   ],
+   "goal": "Oben entsteht ein gelbes Kreuz. Die gelben Ecken sind noch egal.",
+   "intro": [
+    "Schau nur auf die vier Kanten oben – die Mitte ist immer gelb. Es gibt drei Bilder: Punkt, L-Form oder Linie.",
+    "Der Grund-Algorithmus ist F R U R' U' F'. Die Variante F U R U' R' F' löst die L-Form direkt."
+   ],
+   "cases": [
+    {
+     "id": "gk-linie",
+     "name": "Linie",
+     "alg": "F R U R' U' F'",
+     "recognize": "Zwei gegenüberliegende Kanten sind gelb und bilden mit der Mitte eine Linie.",
+     "hold": "Halte die Linie waagrecht, also von links nach rechts."
+    },
+    {
+     "id": "gk-l",
+     "name": "L-Form",
+     "alg": "F U R U' R' F'",
+     "recognize": "Zwei benachbarte Kanten sind gelb und bilden mit der Mitte ein kleines L.",
+     "hold": "Halte das L hinten links: gelbe Kanten hinten und links."
+    },
+    {
+     "id": "gk-punkt",
+     "name": "Punkt",
+     "alg": "(F R U R' U' F') U2 (F U R U' R' F')",
+     "recognize": "Nur die Mitte ist gelb, keine Kante oben.",
+     "hold": "Beliebig halten: zuerst der Linien-Algorithmus, dann U2, dann der L-Algorithmus."
+    }
+   ]
+  },
+  {
+   "id": "l5",
+   "nr": 5,
+   "title": "Gelbe Fläche",
+   "short": "Gelbe Fläche",
+   "mask": "oll",
+   "views": [
+    "top",
+    "iso"
+   ],
+   "goalViews": [
+    "top",
+    "iso"
+   ],
+   "goal": "Die ganze obere Seite ist gelb.",
+   "intro": [
+    "Der wichtigste Algorithmus heisst «Sune»: R U R' U R U2 R'. Er dreht drei Ecken auf einmal.",
+    "Zähle zuerst, wie viele Ecken oben schon gelb sind: genau eine (Fisch), keine oder zwei. Achte dann auf die Seiten: Wohin zeigen die gelben Sticker der Ecken?",
+    "Alle Fälle lassen sich mit dem Sune lösen. Zwischen den Wiederholungen drehst du manchmal U."
+   ],
+   "cases": [
+    {
+     "id": "gf-sune",
+     "name": "Fisch (Sune)",
+     "alg": "R U R' U R U2 R'",
+     "recognize": "Genau eine Ecke ist oben gelb. Die gelben Sticker der anderen Ecken zeigen nach vorne, rechts und hinten.",
+     "hold": "Gelbe Ecke vorne links."
+    },
+    {
+     "id": "gf-antisune",
+     "name": "Fisch andersrum (Antisune)",
+     "alg": "R U2 R' U' R U' R'",
+     "recognize": "Genau eine Ecke ist oben gelb. Vorne links zeigt Gelb nach vorne, vorne rechts nach rechts.",
+     "hold": "Gelbe Ecke hinten rechts."
+    },
+    {
+     "id": "gf-h",
+     "name": "Keine Ecke – zwei Paare (H)",
+     "alg": "(R U R' U R U2 R') (R U R' U R U2 R')",
+     "recognize": "Keine Ecke ist oben gelb. Je zwei gelbe Sticker zeigen nach rechts und nach links.",
+     "hold": "Gelbe Paare rechts und links."
+    },
+    {
+     "id": "gf-pi",
+     "name": "Keine Ecke – ein Paar (Pi)",
+     "alg": "(R U R' U R U2 R') U' (R U R' U R U2 R')",
+     "recognize": "Keine Ecke ist oben gelb. Nur auf einer Seite zeigen zwei gelbe Sticker in dieselbe Richtung.",
+     "hold": "Gelbes Paar links."
+    },
+    {
+     "id": "gf-scheinw",
+     "name": "Zwei Ecken – Scheinwerfer",
+     "alg": "(R U R' U R U2 R') U' (R U R' U R U2 R') U2 (R U R' U R U2 R')",
+     "recognize": "Zwei benachbarte Ecken sind oben gelb. Die anderen zwei zeigen ihr Gelb zur gleichen Seite.",
+     "hold": "Gelbe Ecken hinten, vorne zeigen zwei gelbe Sticker nach vorne."
+    },
+    {
+     "id": "gf-t",
+     "name": "Zwei Ecken – nebeneinander (T)",
+     "alg": "(R U R' U R U2 R') U (R U R' U R U2 R') U2 (R U R' U R U2 R')",
+     "recognize": "Zwei benachbarte Ecken sind oben gelb. Die anderen zwei zeigen ihr Gelb in entgegengesetzte Richtungen.",
+     "hold": "Gelbe Ecken rechts; links zeigt Gelb nach vorne und nach hinten."
+    },
+    {
+     "id": "gf-diag",
+     "name": "Zwei Ecken – diagonal",
+     "alg": "(R U R' U R U2 R') (R U R' U R U2 R') (R U R' U R U2 R')",
+     "recognize": "Zwei diagonal gegenüberliegende Ecken sind oben gelb.",
+     "hold": "Gelbe Ecken hinten links und vorne rechts."
+    }
+   ]
+  },
+  {
+   "id": "l6",
+   "nr": 6,
+   "title": "Gelbe Ecken positionieren",
+   "short": "Ecken setzen",
+   "mask": "llCorners",
+   "views": [
+    "top",
+    "iso"
+   ],
+   "goalViews": [
+    "top",
+    "iso"
+   ],
+   "goal": "Alle gelben Ecken stehen am richtigen Platz: Jede Ecke passt zu den Mitten ihrer zwei Seitenfarben. Die Kanten dürfen noch falsch sein.",
+   "intro": [
+    "Schau auf die Seitenfarben der Ecken in der oberen Ebene.",
+    "Haben zwei Ecken auf einer Seite dieselbe Farbe, heissen sie «Scheinwerfer». Diese zwei Ecken stimmen zueinander.",
+    "Dreh nach dem Algorithmus mit U, bis die Ecken zu den Mitten passen."
+   ],
+   "cases": [
+    {
+     "id": "ge-scheinw",
+     "name": "Scheinwerfer auf einer Seite",
+     "alg": "R' F R' B2 R F' R' B2 R2",
+     "recognize": "Eine Seite hat zwei Ecksticker mit derselben Farbe (Scheinwerfer). Die anderen Ecken müssen tauschen.",
+     "hold": "Scheinwerfer hinten. Danach mit U ausrichten."
+    },
+    {
+     "id": "ge-keine",
+     "name": "Keine Scheinwerfer",
+     "alg": "(R' F R' B2 R F' R' B2 R2) U (R' F R' B2 R F' R' B2 R2)",
+     "recognize": "Keine Seite hat Scheinwerfer: Zwei diagonale Ecken müssen tauschen.",
+     "hold": "Beliebig halten. Nach dem ersten Durchgang gibt es Scheinwerfer: U, damit sie hinten sind, dann nochmals."
+    }
+   ]
+  },
+  {
+   "id": "l7",
+   "nr": 7,
+   "title": "Gelbe Kanten positionieren",
+   "short": "Kanten setzen",
+   "mask": "pll",
+   "views": [
+    "top",
+    "iso"
+   ],
+   "goalViews": [
+    "iso"
+   ],
+   "goal": "Alle Teile sind am richtigen Platz – der Würfel ist gelöst!",
+   "intro": [
+    "Die Ecken stimmen schon. Suche eine Seite, die in der oberen Ebene ganz einfarbig ist: Dort passt die Kante bereits.",
+    "Halte diese fertige Seite hinten. Dann schau, in welche Richtung die anderen drei Kanten wandern müssen.",
+    "Stimmt keine Kante, führst du einen der Algorithmen einmal aus – danach hast du eine fertige Seite."
+   ],
+   "cases": [
+    {
+     "id": "gk2-gegen",
+     "name": "Kanten gegen den Uhrzeigersinn (Ua)",
+     "alg": "R U' R U R U R U' R' U' R2",
+     "recognize": "Hinten ist eine Seite fertig. Die vordere Kante gehört nach rechts, die rechte nach links, die linke nach vorne.",
+     "hold": "Fertige Seite hinten."
+    },
+    {
+     "id": "gk2-mit",
+     "name": "Kanten im Uhrzeigersinn (Ub)",
+     "alg": "R2 U R U R' U' R' U' R' U R'",
+     "recognize": "Hinten ist eine Seite fertig. Die vordere Kante gehört nach links, die linke nach rechts, die rechte nach vorne.",
+     "hold": "Fertige Seite hinten."
+    },
+    {
+     "id": "gk2-gegenueber",
+     "name": "Keine Kante – gegenüber (H)",
+     "alg": "(R U' R U R U R U' R' U' R2) U (R U' R U R U R U' R' U' R2) U'",
+     "recognize": "Keine Seite ist fertig. Gegenüberliegende Kanten müssen tauschen: Jede Seite zeigt in der Mitte die Farbe der Gegenseite.",
+     "hold": "Beliebig halten."
+    },
+    {
+     "id": "gk2-nachbar",
+     "name": "Keine Kante – benachbart (Z)",
+     "alg": "(R U' R U R U R U' R' U' R2) U2 (R2 U R U R' U' R' U' R' U R') U2",
+     "recognize": "Keine Seite ist fertig. Benachbarte Kanten müssen tauschen.",
+     "hold": "Halte so, dass die Kanten vorne/links und hinten/rechts tauschen."
+    }
+   ]
+  }
+ ],
  "sets": [
   {
    "id": "beginner",
@@ -1363,22 +2086,353 @@ const Render = (() => {
 }
 </script>
 <script id="app">
-/* Phase 1: Diagramm-Werkstatt (Vorschau der Engine) */
+/* ===== Cube Coach – App ===== */
 (() => {
+  'use strict';
   const DATA = JSON.parse(document.getElementById('data').textContent);
-  const $ = s => document.querySelector(s);
-  const set = id => DATA.sets.find(s => s.id === id);
-  const full = c => (c.alg + ' ' + (c.auf || '')).trim();
-  const moves = ['R', "R'", 'L', "L'", 'U', "U'", 'D', "D'", 'F', "F'", 'B', "B'", 'M', 'E', 'S', 'r', 'x', 'y', 'z', 'R2'];
-  let h = '<h2>Engine & Diagramme</h2><p class="muted">Phase 1: Alle Bilder werden aus den Algorithmen erzeugt (invertiertes Alg auf gelösten Würfel).</p>';
-  h += '<div class="section-title"><h3>Zug-Pfeile</h3></div><div class="move-grid">' + moves.map(m => `<div class="move-card"><div class="alg">${m}</div>${Render.iso(Cube.solved(), { move: m })}</div>`).join('') + '</div>';
-  const sc = Cube.scramble();
-  h += `<div class="section-title"><h3>Scramble</h3></div><div class="card"><p class="scramble">${sc}</p>${Render.net(Cube.apply(Cube.solved(), sc))}<div class="dias">${Render.iso(Cube.apply(Cube.solved(), sc))}${Render.iso(Cube.apply(Cube.solved(), sc), { bottom: true })}</div></div>`;
-  for (const id of ['pll', 'oll']) {
-    const s = set(id);
-    h += `<div class="section-title"><h3>${s.name} (${s.cases.length})</h3></div><div class="grid">` + s.cases.map(c => `<div class="tile">${Render.top(Cube.caseState(full(c)), { mask: s.mask, arrows: s.arrows })}<b>${c.short}</b></div>`).join('') + '</div>';
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const now = () => Date.now();
+
+  /* ---------- Speicher ---------- */
+  const Store = (() => {
+    const KEY = 'cubecoach.v1';
+    const def = () => ({ v: 1, learned: {}, cards: {}, times: [], settings: { inspection: false, speed: 1, drillMode: 'cube', drillSet: 'all', show3d: false } });
+    const merge = o => { const d = def(); return Object.assign(d, o, { settings: Object.assign(d.settings, o && o.settings) }); };
+    let s;
+    try { s = merge(JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { s = def(); }
+    return {
+      get s() { return s; },
+      save() { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { toast('Speichern nicht möglich'); } },
+      replace(o) { s = merge(o); this.save(); },
+      reset() { s = def(); this.save(); },
+      def,
+    };
+  })();
+
+  /* ---------- Fälle ---------- */
+  const CASES = new Map();
+  const LESSONS = DATA.lessons || [];
+  for (const l of LESSONS) for (const c of l.cases) {
+    CASES.set(c.id, Object.assign({}, c, { setId: 'beginner', lesson: l, mask: c.mask || l.mask, views: c.views || l.views, full: c.alg }));
   }
-  $('#view').innerHTML = h;
+  for (const s of DATA.sets) for (const c of (s.cases || [])) {
+    CASES.set(c.id, Object.assign({}, c, { setId: s.id, set: s, mask: s.mask, views: s.views, arrows: !!s.arrows, full: (c.alg + ' ' + (c.auf || '')).trim() }));
+  }
+  const casesOfSet = id => id === 'beginner' ? LESSONS.flatMap(l => l.cases.map(c => CASES.get(c.id))) : [...CASES.values()].filter(c => c.setId === id);
+  const stCache = new Map();
+  const caseState = c => {
+    if (!stCache.has(c.id)) stCache.set(c.id, c.kind === 'move' ? Cube.solved() : Cube.caseState(c.full));
+    return stCache.get(c.id);
+  };
+  function dia(c, view, o = {}) {
+    const st = o.state || caseState(c);
+    if (view === 'top') return Render.top(st, { mask: c.mask, arrows: c.arrows && o.arrows !== false });
+    return Render.iso(st, { mask: c.mask, bottom: view === 'isoD', move: c.kind === 'move' && !o.state ? c.alg : o.move });
+  }
+  const dias = (c, views = c.views, cls = '') => `<div class="dias ${cls}">${views.map(v => dia(c, v)).join('')}</div>`;
+  const algHTML = (c, cls = '') => `<div class="alg ${cls}">${esc(c.alg)}${c.auf ? ` <span class="auf">${esc(c.auf)}</span>` : ''}</div>`;
+
+  /* ---------- Zug-Beschreibungen ---------- */
+  const WORDS = {
+    R: ['Rechte Seite nach oben', 'Rechte Seite nach unten', 'Rechte Seite'],
+    L: ['Linke Seite nach unten', 'Linke Seite nach oben', 'Linke Seite'],
+    U: ['Obere Ebene nach links', 'Obere Ebene nach rechts', 'Obere Ebene'],
+    D: ['Untere Ebene nach rechts', 'Untere Ebene nach links', 'Untere Ebene'],
+    F: ['Vorderseite im Uhrzeigersinn', 'Vorderseite gegen den Uhrzeigersinn', 'Vorderseite'],
+    B: ['Rückseite im Uhrzeigersinn (von hinten gesehen)', 'Rückseite gegen den Uhrzeigersinn (von hinten gesehen)', 'Rückseite'],
+    M: ['Mittlere Scheibe nach unten (wie L)', 'Mittlere Scheibe nach oben (wie L\')', 'Mittlere Scheibe M'],
+    E: ['Mittlere Ebene nach rechts (wie D)', 'Mittlere Ebene nach links (wie D\')', 'Mittlere Ebene E'],
+    S: ['Mittlere Scheibe im Uhrzeigersinn (wie F)', 'Mittlere Scheibe gegen den Uhrzeigersinn (wie F\')', 'Mittlere Scheibe S'],
+    x: ['Ganzen Würfel nach hinten kippen (wie R)', 'Ganzen Würfel nach vorne kippen (wie R\')', 'Ganzen Würfel kippen'],
+    y: ['Ganzen Würfel nach links drehen (wie U)', 'Ganzen Würfel nach rechts drehen (wie U\')', 'Ganzen Würfel drehen'],
+    z: ['Ganzen Würfel nach rechts kippen (wie F)', 'Ganzen Würfel nach links kippen (wie F\')', 'Ganzen Würfel kippen'],
+  };
+  function describe(mv) {
+    const wide = /[rludfb]/.test(mv.base);
+    const w = WORDS[wide ? mv.base.toUpperCase() : mv.base];
+    const txt = mv.amount === 2 ? w[2] + ' – halbe Drehung' : w[mv.amount === 1 ? 0 : 1];
+    return wide ? 'Zwei Schichten: ' + txt : txt;
+  }
+
+  /* ---------- Bildschirm wach halten ---------- */
+  const Wake = (() => {
+    let lock = null; const reasons = new Set();
+    async function acquire() {
+      if (!reasons.size || lock || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+      try { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } catch (e) { lock = null; }
+    }
+    function update() {
+      if (reasons.size) acquire();
+      else if (lock) { lock.release().catch(() => {}); lock = null; }
+    }
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') acquire(); });
+    return { on(r) { reasons.add(r); update(); }, off(r) { reasons.delete(r); update(); }, get active() { return !!lock; } };
+  })();
+
+  /* ---------- Kleinkram ---------- */
+  let toastT;
+  function toast(msg) {
+    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+  function ago(ts) {
+    if (!ts) return 'noch nie';
+    const d = now() - ts, m = Math.round(d / 6e4), h = Math.round(d / 36e5), dd = Math.round(d / 864e5);
+    if (m < 1) return 'gerade eben';
+    if (m < 60) return `vor ${m} Min.`;
+    if (h < 24) return `vor ${h} Std.`;
+    return dd === 1 ? 'gestern' : `vor ${dd} Tagen`;
+  }
+  function inTime(ts) {
+    const d = ts - now();
+    if (d <= 0) return 'jetzt';
+    const m = Math.ceil(d / 6e4), h = Math.round(d / 36e5), dd = Math.round(d / 864e5);
+    if (m < 60) return `in ${m} Min.`;
+    if (h < 24) return `in ${h} Std.`;
+    return dd === 1 ? 'morgen' : `in ${dd} Tagen`;
+  }
+  const ICON = {
+    learn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5C5.5 4 8.5 4 12 6c3.5-2 6.5-2 9-.5V19c-2.5-1.5-5.5-1.5-9 .5-3.5-2-6.5-2-9-.5z"/><path d="M12 6v13.5"/></svg>',
+    drill: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="14" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v12"/><path d="M7 14l2 2 4-4"/></svg>',
+    timer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 2M9.5 2.5h5M12 2.5V6M18.5 6.5l1.5-1.5"/></svg>',
+    sets: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
+    more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>',
+    close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    steps: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h12M13 6l6 6-6 6"/></svg>',
+    cube: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><path d="M4 7.4l8 4.6 8-4.6M12 12v9.2"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  };
+  const BRAND = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="4" width="56" height="56" rx="14" fill="#241d15"/><g fill="#d9a845"><rect x="13" y="13" width="11" height="11" rx="2.5"/><rect x="26.5" y="13" width="11" height="11" rx="2.5"/><rect x="40" y="13" width="11" height="11" rx="2.5" opacity=".55"/><rect x="13" y="26.5" width="11" height="11" rx="2.5"/><rect x="26.5" y="26.5" width="11" height="11" rx="2.5"/><rect x="40" y="26.5" width="11" height="11" rx="2.5"/><rect x="13" y="40" width="11" height="11" rx="2.5" opacity=".55"/><rect x="26.5" y="40" width="11" height="11" rx="2.5"/><rect x="40" y="40" width="11" height="11" rx="2.5"/></g></svg>';
+
+  /* ---------- Overlay (Vollbild-Dialoge) ---------- */
+  let overlay = null;
+  function openOverlay(title, { onClose } = {}) {
+    closeOverlay(true);
+    const el = document.createElement('div');
+    el.className = 'overlay';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.innerHTML = `<div class="ov-head"><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="Schliessen">${ICON.close}</button></div><div class="ov-body"></div><div class="ov-foot"></div>`;
+    $('#overlay-root').appendChild(el);
+    el.querySelector('[data-close]').addEventListener('click', () => history.back());
+    overlay = { el, onClose };
+    if (history.state && history.state.overlay) history.replaceState({ overlay: true }, '');
+    else history.pushState({ overlay: true }, '');
+    Wake.on('overlay');
+    document.body.style.overflow = 'hidden';
+    return { el, body: el.querySelector('.ov-body'), foot: el.querySelector('.ov-foot') };
+  }
+  function closeOverlay(silent) {
+    if (!overlay) return;
+    const o = overlay; overlay = null;
+    if (o.onClose) o.onClose();
+    o.el.remove();
+    Wake.off('overlay');
+    document.body.style.overflow = '';
+  }
+  window.addEventListener('popstate', () => { if (overlay) closeOverlay(); });
+
+  /* ---------- Zug-für-Zug-Trainer ---------- */
+  function openTrainer(c) {
+    const moves = Cube.parse(c.full);
+    const st0 = caseState(c);
+    const views = c.views.filter(v => v !== 'top');
+    if (!views.length) views.push('iso');
+    let i = 0, view3d = null, show3d = Store.s.settings.show3d, busy = false;
+    const ov = openOverlay(c.kind === 'move' ? 'Zug ' + c.name : c.name, { onClose: () => document.removeEventListener('keydown', key) });
+    ov.body.innerHTML = `
+      <div class="trainer-vis"><div class="dias" data-dia></div><div class="c3wrap ${show3d ? '' : 'hidden'}" data-c3></div></div>
+      <div class="step-move"><div class="big-move" data-big></div><div class="desc" data-desc></div><div class="count" data-count></div></div>
+      <div class="moves" data-moves style="justify-content:center"></div>
+      <button class="btn sm ghost" data-t3d style="align-self:center">${ICON.cube} <span>${show3d ? '3D ausblenden' : '3D-Hilfe einblenden'}</span></button>`;
+    ov.foot.innerHTML = `<div class="btns two"><button class="btn big" data-prev>Zurück</button><button class="btn big primary" data-next>Weiter</button></div>`;
+    const ensure3d = () => {
+      if (!view3d) { view3d = new Cube3D.View(ov.body.querySelector('[data-c3]'), { mask: c.mask }); }
+      view3d.setState(Cube.apply(st0, moves.slice(0, i)));
+    };
+    if (show3d) ensure3d();
+    function render() {
+      const st = Cube.apply(st0, moves.slice(0, i));
+      const done = i >= moves.length;
+      ov.body.querySelector('[data-dia]').innerHTML = views.map(v => Render.iso(st, { mask: c.mask, bottom: v === 'isoD', move: done ? null : moves[i] })).join('');
+      ov.body.querySelector('[data-big]').innerHTML = done ? `<span style="color:var(--good)">✓</span>` : esc(Cube.moveStr(moves[i]));
+      ov.body.querySelector('[data-desc]').textContent = done ? (moves.length > 1 ? 'Geschafft! Vergleiche deinen Würfel mit dem Bild.' : 'Gut gemacht!') : describe(moves[i]);
+      ov.body.querySelector('[data-count]').textContent = done ? `${moves.length} Züge` : `Zug ${i + 1} von ${moves.length}`;
+      ov.body.querySelector('[data-moves]').innerHTML = moves.map((m, k) => `<span class="mv ${k < i ? 'done' : k === i ? 'now' : ''}">${esc(Cube.moveStr(m))}</span>`).join('');
+      const next = ov.foot.querySelector('[data-next]');
+      next.textContent = done ? 'Nochmals' : (i === moves.length - 1 ? 'Letzter Zug' : 'Weiter');
+      ov.foot.querySelector('[data-prev]').disabled = i === 0;
+    }
+    async function next() {
+      if (busy) return;
+      if (i >= moves.length) { i = 0; if (view3d) view3d.setState(st0); render(); return; }
+      if (show3d && view3d) { busy = true; const k = i; i++; render(); await view3d.animate(moves[k], 380 / Store.s.settings.speed); busy = false; }
+      else { i++; render(); }
+    }
+    function prev() {
+      if (busy || i === 0) return;
+      i--; render();
+      if (view3d) view3d.setState(Cube.apply(st0, moves.slice(0, i)));
+    }
+    function key(e) {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); next(); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+    }
+    document.addEventListener('keydown', key);
+    ov.foot.querySelector('[data-next]').addEventListener('click', next);
+    ov.foot.querySelector('[data-prev]').addEventListener('click', prev);
+    ov.body.querySelector('[data-t3d]').addEventListener('click', e => {
+      show3d = !show3d; Store.s.settings.show3d = show3d; Store.save();
+      ov.body.querySelector('[data-c3]').classList.toggle('hidden', !show3d);
+      e.currentTarget.querySelector('span').textContent = show3d ? '3D ausblenden' : '3D-Hilfe einblenden';
+      if (show3d) ensure3d();
+    });
+    render();
+  }
+
+  /* ---------- 3D-Animation ---------- */
+  function openPlayer(c) {
+    const ov = openOverlay('3D: ' + c.name, { onClose: () => p.stop() });
+    ov.body.innerHTML = `<div data-p></div><p class="muted small" style="text-align:center">Ziehen dreht die Ansicht. Tippe auf einen Zug, um dorthin zu springen.</p>`;
+    const p = new Cube3D.Player(ov.body.querySelector('[data-p]'), { alg: c.full, start: caseState(c), mask: c.mask, speed: Store.s.settings.speed });
+    ov.foot.innerHTML = `<button class="btn block" data-steps>${ICON.steps} Zug für Zug am echten Würfel</button>`;
+    ov.foot.querySelector('[data-steps]').addEventListener('click', () => { closeOverlay(true); openTrainer(c); });
+  }
+
+  function bindCaseButtons(root) {
+    root.addEventListener('click', e => {
+      const b = e.target.closest('[data-steps],[data-3d]');
+      if (!b) return;
+      const c = CASES.get(b.dataset.steps || b.dataset['3d']);
+      if (!c) return;
+      if (b.dataset.steps) openTrainer(c); else openPlayer(c);
+    });
+  }
+  const caseButtons = c => `<div class="btns two"><button class="btn primary" data-steps="${c.id}">${ICON.steps} Zug für Zug</button><button class="btn" data-3d="${c.id}">${ICON.cube} 3D-Animation</button></div>`;
+
+  /* ---------- Ansichten ---------- */
+  const VIEWS = {};
+  let cleanup = null;
+
+  // Lernpfad
+  VIEWS.learn = () => {
+    const learned = Store.s.learned;
+    const n = LESSONS.filter(l => learned[l.id]).length;
+    const nextL = LESSONS.find(l => !learned[l.id]);
+    let h = `<div class="card gold">
+      <div class="eyebrow">Dein Lernpfad · Anfängermethode</div>
+      <h2 style="margin:4px 0 8px">${nextL ? 'Weiter mit Lektion ' + nextL.nr : 'Alle Lektionen gelernt!'}</h2>
+      <div class="progress" aria-label="${n} von ${LESSONS.length}"><i style="width:${(n / LESSONS.length) * 100}%"></i></div>
+      <p class="muted small" style="margin-top:8px">${n} von ${LESSONS.length} Lektionen gelernt. Gelernte Fälle kommen in den Drill.</p>
+      ${nextL ? `<a class="btn primary block" href="#/lesson/${nextL.id}" style="margin-top:6px">${esc(nextL.title)} öffnen</a>` : `<a class="btn primary block" href="#/drill" style="margin-top:6px">Zum Drill</a>`}
+    </div>`;
+    h += LESSONS.map(l => {
+      const goalSt = Cube.solved();
+      const thumb = Render.iso(goalSt, { mask: l.mask, bottom: (l.goalViews || l.views)[0] === 'isoD' });
+      return `<a class="lesson-item ${learned[l.id] ? 'done' : ''}" href="#/lesson/${l.id}">
+        <span class="nr">${learned[l.id] ? ICON.check.replace('<svg', '<svg width="22" height="22"') : l.nr}</span>
+        <span class="t"><b>${esc(l.title)}</b><span>${esc(l.goal)}</span></span>
+        <span class="thumb">${thumb}</span></a>`;
+    }).join('');
+    return { title: 'Lernpfad', tab: 'learn', html: h, brand: true };
+  };
+
+  // Lektion
+  VIEWS.lesson = id => {
+    const l = LESSONS.find(x => x.id === id);
+    if (!l) return VIEWS.learn();
+    const learned = Store.s.learned[l.id];
+    const goalSt = Cube.solved();
+    const goalDias = (l.goalViews || l.views).map(v => v === 'top' ? Render.top(goalSt, { mask: l.mask }) : Render.iso(goalSt, { mask: l.mask, bottom: v === 'isoD' })).join('');
+    let h = `<div class="eyebrow">Lektion ${l.nr}</div><h2 style="margin:2px 0 14px">${esc(l.title)}</h2>
+      <div class="card gold"><div class="eyebrow">Ziel</div><p>${esc(l.goal)}</p><div class="dias lg">${goalDias}</div></div>
+      <div class="card flat stack">${l.intro.map(p => `<p>${esc(p)}</p>`).join('')}</div>`;
+    if (l.tip) h += `<div class="card flat"><div class="eyebrow">Tipp</div><p>${esc(l.tip)}</p></div>`;
+    h += `<div class="section-title"><h3>${l.nr === 0 ? 'Die Grundzüge' : 'Szenarien'}</h3><span class="muted small">${l.cases.length} ${l.nr === 0 ? 'Züge' : 'Fälle'}</span></div>`;
+    if (l.nr === 0) {
+      h += `<p class="muted small">Tippe auf einen Zug, um ihn Schritt für Schritt (auch in 3D) zu sehen. Mach jeden Zug am echten Würfel nach – und gleich wieder zurück.</p><div class="move-grid">` +
+        l.cases.map(c => `<button class="move-card" data-steps="${c.id}"><div class="alg">${esc(c.name)}</div>${dia(CASES.get(c.id), 'iso')}<div class="small">${esc(c.recognize)}</div></button>`).join('') + '</div>';
+    } else {
+      h += l.cases.map((c0, k) => {
+        const c = CASES.get(c0.id);
+        return `<div class="card scenario">
+          <div class="head"><h3>${k + 1}. ${esc(c.name)}</h3></div>
+          ${dias(c)}
+          <dl class="kv"><dt>Erkennen</dt><dd>${esc(c.recognize)}</dd><dt>Halten</dt><dd>${esc(c.hold)}</dd></dl>
+          <div style="margin:14px 0 12px">${algHTML(c)}<div class="muted small">${Cube.parse(c.full).length} Züge</div></div>
+          ${caseButtons(c)}
+        </div>`;
+      }).join('');
+    }
+    const nextL = LESSONS.find(x => x.nr === l.nr + 1);
+    h += `<div class="card ${learned ? '' : 'gold'}" style="margin-top:22px">
+      ${learned
+        ? `<p><b style="color:var(--good)">✓ Gelernt</b> <span class="muted">(${new Date(learned).toLocaleDateString('de-CH')})</span>. Die ${l.cases.length} Fälle sind im Drill.</p>
+           <div class="btns two"><a class="btn primary" href="#/drill">Zum Drill</a><button class="btn" data-unlearn>Wieder offen</button></div>`
+        : `<p>Kannst du alle ${l.nr === 0 ? 'Züge' : 'Szenarien'} am echten Würfel? Dann markiere die Lektion als gelernt – ihre Fälle kommen in den Drill.</p>
+           <button class="btn primary big block" data-learn>${ICON.check} Lektion als gelernt markieren</button>`}
+    </div>`;
+    h += `<div class="btns two">${l.nr > 0 ? `<a class="btn ghost" href="#/lesson/${LESSONS[l.nr - 1].id}">← Lektion ${l.nr - 1}</a>` : '<span></span>'}${nextL ? `<a class="btn ghost" href="#/lesson/${nextL.id}">Lektion ${nextL.nr} →</a>` : ''}</div>`;
+    return {
+      title: `Lektion ${l.nr}`, back: '#/learn', tab: 'learn', wake: true, html: h,
+      mount(el) {
+        bindCaseButtons(el);
+        const lb = $('[data-learn]', el);
+        if (lb) lb.addEventListener('click', () => {
+          Store.s.learned[l.id] = now();
+          for (const c of l.cases) if (!Store.s.cards[c.id]) Store.s.cards[c.id] = Logic.newCard(now());
+          Store.save();
+          toast(`Lektion ${l.nr} gelernt – ${l.cases.length} Fälle im Drill`);
+          render();
+        });
+        const ub = $('[data-unlearn]', el);
+        if (ub) ub.addEventListener('click', () => { delete Store.s.learned[l.id]; Store.save(); render(); });
+      },
+    };
+  };
+
+  VIEWS.drill = () => ({ title: 'Drill', tab: 'drill', html: '<div class="card empty"><div class="big-ico">🃏</div><p>Der Drill folgt in Phase 3.</p></div>' });
+  VIEWS.timer = () => ({ title: 'Timer', tab: 'timer', html: '<div class="card empty"><div class="big-ico">⏱</div><p>Der Timer folgt in Phase 4.</p></div>' });
+  VIEWS.sets = () => ({ title: 'Sets', tab: 'sets', html: '<div class="card empty"><div class="big-ico">▦</div><p>Die Übersicht folgt in Phase 4.</p></div>' });
+  VIEWS.more = () => ({ title: 'Mehr', tab: 'more', html: '<div class="card empty"><p>Einstellungen folgen.</p></div>' });
+
+  /* ---------- Router ---------- */
+  const TABS = [['learn', 'Lernen'], ['drill', 'Drill'], ['timer', 'Timer'], ['sets', 'Sets'], ['more', 'Mehr']];
+  $('#tabs').innerHTML = TABS.map(([id, label]) => `<a href="#/${id}" data-tab="${id}">${ICON[id]}<span>${label}</span></a>`).join('');
+  $('#back').addEventListener('click', () => { const b = $('#back').dataset.href; if (b) location.hash = b; });
+
+  function parseHash() {
+    const parts = (location.hash || '#/learn').replace(/^#\/?/, '').split('/');
+    return { name: parts[0] || 'learn', arg: parts[1] ? decodeURIComponent(parts[1]) : undefined };
+  }
+  let lastRoute = '';
+  function render() {
+    const { name, arg } = parseHash();
+    const fn = VIEWS[name] || VIEWS.learn;
+    if (cleanup) { try { cleanup(); } catch (e) { /* ignore */ } cleanup = null; }
+    const v = fn(arg);
+    const main = $('#view');
+    main.innerHTML = v.html;
+    $('#title').innerHTML = v.brand ? `${BRAND}<span>Cube Coach</span>` : esc(v.title);
+    $('#title').classList.toggle('brand', !!v.brand);
+    const back = $('#back');
+    back.classList.toggle('hidden', !v.back);
+    back.dataset.href = v.back || '';
+    $('#top-actions').innerHTML = v.actions || '';
+    $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === v.tab));
+    if (v.wake) Wake.on('view'); else Wake.off('view');
+    if (v.mount) cleanup = v.mount(main) || null;
+    const r = location.hash;
+    if (r !== lastRoute) { window.scrollTo(0, 0); lastRoute = r; }
+  }
+  window.addEventListener('hashchange', () => { closeOverlay(true); render(); });
+  if (!location.hash) history.replaceState(null, '', '#/learn');
+  render();
+
+  // Für Tests/Debugging
+  window.CubeCoach = { Store, CASES, render, openTrainer, openPlayer, caseState };
 })();
 </script>
 </body>
