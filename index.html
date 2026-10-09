@@ -271,6 +271,17 @@ body.timing .timer-pad { position: fixed; inset: 0; z-index: 80; border-radius: 
 .times li .btn { min-height: 38px; padding: 0 10px; font-size: .82rem; }
 .times li .btn.on { border-color: var(--warn); color: var(--warn); }
 
+.auto3d { margin: 4px 0 6px; }
+.auto3d .c3 { max-width: 230px; }
+.auto3d .moves { justify-content: center; gap: 4px; margin-top: 4px; }
+.auto3d .mv { min-width: 34px; height: 32px; font-size: .9rem; border-radius: 8px; }
+.auto-ctrl { display: flex; align-items: center; gap: 10px; margin: 6px 0 14px; }
+.auto-ctrl .btn { width: 44px; padding: 0; flex: none; }
+.auto-label { text-align: center; font-weight: 650; color: var(--gold2); min-height: 1.5em; margin-top: 4px; }
+.speed-row { display: flex; align-items: center; gap: 10px; flex: 1; min-height: 44px; }
+.speed-row input[type=range] { flex: 1; accent-color: var(--gold); height: 32px; min-width: 0; }
+.speed-row output { font-family: var(--mono); font-weight: 700; color: var(--gold2); min-width: 3.4em; text-align: right; }
+.c3wrap .speed-row { margin-top: 4px; }
 @media (min-width: 640px) {
   .stat b { font-size: 1.25rem; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); }
@@ -776,10 +787,10 @@ const Cube3D = (() => {
 
   // Player: spielt einen Algorithmus ab (Play, Pause, Schritt vor/zurück, Tempo)
   class Player {
-    constructor(host, { alg, start, mask, speed = 1, onStep } = {}) {
+    constructor(host, { alg, start, mask, speed = 1, getSpeed, speedHTML = '', onStep } = {}) {
       this.moves = Cube.parse(alg);
       this.start = start || Cube.caseState(alg);
-      this.i = 0; this.playing = false; this.speed = speed; this.onStep = onStep;
+      this.i = 0; this.playing = false; this.speed = speed; this.getSpeed = getSpeed; this.onStep = onStep;
       host.innerHTML = `<div class="player stack">
         <div class="c3host"></div>
         <div class="moves" data-moves></div>
@@ -790,7 +801,7 @@ const Cube3D = (() => {
           <button class="btn" data-a="fwd" aria-label="Schritt vor"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6v12l8-6zM6 6v12h2V6z"/></svg></button>
           <button class="btn" data-a="end" aria-label="Zum Ende"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 6v12l9-6z"/></svg></button>
         </div>
-        <div class="speed"><span class="muted small">Tempo</span><div class="seg" data-speed>${[0.5, 1, 1.5, 2].map(s => `<button data-s="${s}">${String(s).replace('.', ',')}×</button>`).join('')}</div></div>
+        ${speedHTML}
       </div>`;
       this.host = host;
       this.view = new View(host.querySelector('.c3host'), { mask });
@@ -799,16 +810,12 @@ const Cube3D = (() => {
         const b = e.target.closest('[data-a]'); if (!b) return;
         ({ reset: () => this.reset(), back: () => this.back(), play: () => this.toggle(), fwd: () => this.fwd(), end: () => this.end() })[b.dataset.a]();
       });
-      host.querySelector('[data-speed]').addEventListener('click', e => {
-        const b = e.target.closest('[data-s]'); if (!b) return;
-        this.speed = +b.dataset.s; this.ui();
-      });
       host.querySelector('[data-moves]').addEventListener('click', e => {
         const b = e.target.closest('[data-i]'); if (b) this.jump(+b.dataset.i);
       });
       this.ui();
     }
-    get ms() { return 420 / this.speed; }
+    get ms() { return 420 / (this.getSpeed ? this.getSpeed() : this.speed); }
     ui() {
       const m = this.host.querySelector('[data-moves]');
       m.innerHTML = this.moves.map((mv, k) => `<button class="mv ${k < this.i ? 'done' : k === this.i ? 'now' : ''}" data-i="${k}">${Cube.moveStr(mv)}</button>`).join('');
@@ -817,7 +824,6 @@ const Cube3D = (() => {
         ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
         : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>';
       play.setAttribute('aria-label', this.playing ? 'Pause' : 'Abspielen');
-      this.host.querySelectorAll('[data-s]').forEach(b => b.classList.toggle('on', +b.dataset.s === this.speed));
       if (this.onStep) this.onStep(this.i, this.moves.length);
     }
     async fwd() {
@@ -852,7 +858,48 @@ const Cube3D = (() => {
     end() { this.jump(this.moves.length); }
     stop() { this.playing = false; }
   }
-  return { View, Player };
+  // Auto: spielt einen Algorithmus in Endlosschleife vor, solange sichtbar
+  class Auto {
+    constructor(host, { alg, start, mask, getSpeed, paused = false, onStep } = {}) {
+      host.innerHTML = '<div class="c3host"></div><div class="moves" data-moves></div>';
+      this.view = new View(host.querySelector('.c3host'), { mask });
+      this.moves = Cube.parse(alg);
+      this.start = start || Cube.caseState(alg);
+      this.view.setState(this.start);
+      this.chips = host.querySelector('[data-moves]');
+      this.getSpeed = getSpeed || (() => 1);
+      this.onStep = onStep;
+      this.i = 0; this.visible = false; this.paused = paused; this.dead = false; this.loop = null;
+      this.ui();
+    }
+    ui() {
+      this.chips.innerHTML = this.moves.map((mv, k) => `<span class="mv ${k < this.i ? 'done' : k === this.i ? 'now' : ''}">${Cube.moveStr(mv)}</span>`).join('');
+      if (this.onStep) this.onStep(this.i, this.moves);
+    }
+    setVisible(v) { this.visible = v; this.kick(); }
+    setPaused(p) { this.paused = p; this.kick(); }
+    kick() { if (this.visible && !this.paused && !this.dead && !this.loop) this.loop = this.run().finally(() => { this.loop = null; }); }
+    async run() {
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const go = () => this.visible && !this.paused && !this.dead;
+      while (go()) {
+        if (document.hidden || document.querySelector('.overlay')) { await sleep(400); continue; }
+        if (this.i >= this.moves.length) {
+          await sleep(1300);
+          if (!go()) break;
+          this.i = 0; this.view.setState(this.start); this.ui();
+          await sleep(600);
+          continue;
+        }
+        const sp = this.getSpeed();
+        await this.view.animate(this.moves[this.i], 420 / sp);
+        this.i++; this.ui();
+        await sleep(140 / sp);
+      }
+    }
+    destroy() { this.dead = true; }
+  }
+  return { View, Player, Auto };
 })();
 </script>
 <script id="logic">
@@ -2100,7 +2147,7 @@ const Logic = (() => {
   /* ---------- Speicher ---------- */
   const Store = (() => {
     const KEY = 'cubecoach.v1';
-    const def = () => ({ v: 1, learned: {}, cards: {}, times: [], settings: { inspection: false, speed: 1, drillMode: 'cube', drillSet: 'all', show3d: false } });
+    const def = () => ({ v: 1, learned: {}, cards: {}, times: [], settings: { inspection: false, speed: 1, drillMode: 'cube', drillSet: 'all', show3d: false, autoplay: true } });
     const merge = o => { const d = def(); return Object.assign(d, o, { settings: Object.assign(d.settings, o && o.settings) }); };
     let s;
     try { s = merge(JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { s = def(); }
@@ -2204,9 +2251,24 @@ const Logic = (() => {
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     steps: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h12M13 6l6 6-6 6"/></svg>',
     cube: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><path d="M4 7.4l8 4.6 8-4.6M12 12v9.2"/></svg>',
+    play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>',
     check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   };
   const BRAND = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="4" width="56" height="56" rx="14" fill="#241d15"/><g fill="#d9a845"><rect x="13" y="13" width="11" height="11" rx="2.5"/><rect x="26.5" y="13" width="11" height="11" rx="2.5"/><rect x="40" y="13" width="11" height="11" rx="2.5" opacity=".55"/><rect x="13" y="26.5" width="11" height="11" rx="2.5"/><rect x="26.5" y="26.5" width="11" height="11" rx="2.5"/><rect x="40" y="26.5" width="11" height="11" rx="2.5"/><rect x="13" y="40" width="11" height="11" rx="2.5" opacity=".55"/><rect x="26.5" y="40" width="11" height="11" rx="2.5"/><rect x="40" y="40" width="11" height="11" rx="2.5"/></g></svg>';
+
+  /* ---------- Tempo-Regler (global, gilt für alle Animationen) ---------- */
+  const fmtSpeed = v => String(v).replace('.', ',') + '×';
+  const getSpeed = () => Store.s.settings.speed || 1;
+  const speedSlider = () => `<label class="speed-row"><span class="muted small">Tempo</span><input type="range" min="0.25" max="3" step="0.25" value="${getSpeed()}" data-speedrange aria-label="Animationstempo"><output>${fmtSpeed(getSpeed())}</output></label>`;
+  let speedSaveT;
+  document.addEventListener('input', e => {
+    if (!e.target.matches('[data-speedrange]')) return;
+    const v = +e.target.value;
+    Store.s.settings.speed = v;
+    $$('[data-speedrange]').forEach(r => { if (r !== e.target) r.value = v; r.parentElement.querySelector('output').textContent = fmtSpeed(v); });
+    clearTimeout(speedSaveT); speedSaveT = setTimeout(() => Store.save(), 300);
+  });
 
   /* ---------- Overlay (Vollbild-Dialoge) ---------- */
   let overlay = null;
@@ -2245,7 +2307,7 @@ const Logic = (() => {
     let i = 0, view3d = null, show3d = Store.s.settings.show3d, busy = false;
     const ov = openOverlay(c.kind === 'move' ? 'Zug ' + c.name : c.name, { onClose: () => document.removeEventListener('keydown', key) });
     ov.body.innerHTML = `
-      <div class="trainer-vis"><div class="dias" data-dia></div><div class="c3wrap ${show3d ? '' : 'hidden'}" data-c3></div></div>
+      <div class="trainer-vis"><div class="dias" data-dia></div><div class="c3wrap ${show3d ? '' : 'hidden'}"><div data-c3></div>${speedSlider()}</div></div>
       <div class="step-move"><div class="big-move" data-big></div><div class="desc" data-desc></div><div class="count" data-count></div></div>
       <div class="moves" data-moves style="justify-content:center"></div>
       <button class="btn sm ghost" data-t3d style="align-self:center">${ICON.cube} <span>${show3d ? '3D ausblenden' : '3D-Hilfe einblenden'}</span></button>`;
@@ -2270,7 +2332,7 @@ const Logic = (() => {
     async function next() {
       if (busy) return;
       if (i >= moves.length) { i = 0; if (view3d) view3d.setState(st0); render(); return; }
-      if (show3d && view3d) { busy = true; const k = i; i++; render(); await view3d.animate(moves[k], 380 / Store.s.settings.speed); busy = false; }
+      if (show3d && view3d) { busy = true; const k = i; i++; render(); await view3d.animate(moves[k], 380 / getSpeed()); busy = false; }
       else { i++; render(); }
     }
     function prev() {
@@ -2287,7 +2349,7 @@ const Logic = (() => {
     ov.foot.querySelector('[data-prev]').addEventListener('click', prev);
     ov.body.querySelector('[data-t3d]').addEventListener('click', e => {
       show3d = !show3d; Store.s.settings.show3d = show3d; Store.save();
-      ov.body.querySelector('[data-c3]').classList.toggle('hidden', !show3d);
+      ov.body.querySelector('.c3wrap').classList.toggle('hidden', !show3d);
       e.currentTarget.querySelector('span').textContent = show3d ? '3D ausblenden' : '3D-Hilfe einblenden';
       if (show3d) ensure3d();
     });
@@ -2298,7 +2360,7 @@ const Logic = (() => {
   function openPlayer(c) {
     const ov = openOverlay('3D: ' + c.name, { onClose: () => p.stop() });
     ov.body.innerHTML = `<div data-p></div><p class="muted small" style="text-align:center">Ziehen dreht die Ansicht. Tippe auf einen Zug, um dorthin zu springen.</p>`;
-    const p = new Cube3D.Player(ov.body.querySelector('[data-p]'), { alg: c.full, start: caseState(c), mask: c.mask, speed: Store.s.settings.speed });
+    const p = new Cube3D.Player(ov.body.querySelector('[data-p]'), { alg: c.full, start: caseState(c), mask: c.mask, getSpeed, speedHTML: speedSlider() });
     ov.foot.innerHTML = `<button class="btn block" data-steps>${ICON.steps} Zug für Zug am echten Würfel</button>`;
     ov.foot.querySelector('[data-steps]').addEventListener('click', () => { closeOverlay(true); openTrainer(c); });
   }
@@ -2354,6 +2416,9 @@ const Logic = (() => {
     if (l.tip) h += `<div class="card flat"><div class="eyebrow">Tipp</div><p>${esc(l.tip)}</p></div>`;
     h += `<div class="section-title"><h3>${l.nr === 0 ? 'Die Grundzüge' : 'Szenarien'}</h3><span class="muted small">${l.cases.length} ${l.nr === 0 ? 'Züge' : 'Fälle'}</span></div>`;
     if (l.nr === 0) {
+      const demo = l.cases.map(c => c.alg + ' ' + Cube.invertStr(c.alg)).join(' ');
+      h += `<div class="card auto-card"><div class="eyebrow">Vorgespielt</div><div class="auto-label" data-autolabel>&nbsp;</div>
+        <div class="auto3d" data-auto="__l0" data-alg="${esc(demo)}"></div>${autoControls()}</div>`;
       h += `<p class="muted small">Tippe auf einen Zug, um ihn Schritt für Schritt (auch in 3D) zu sehen. Mach jeden Zug am echten Würfel nach – und gleich wieder zurück.</p><div class="move-grid">` +
         l.cases.map(c => `<button class="move-card" data-steps="${c.id}"><div class="alg">${esc(c.name)}</div>${dia(CASES.get(c.id), 'iso')}<div class="small">${esc(c.recognize)}</div></button>`).join('') + '</div>';
     } else {
@@ -2364,6 +2429,7 @@ const Logic = (() => {
           ${dias(c)}
           <dl class="kv"><dt>Erkennen</dt><dd>${esc(c.recognize)}</dd><dt>Halten</dt><dd>${esc(c.hold)}</dd></dl>
           <div style="margin:14px 0 12px">${algHTML(c)}<div class="muted small">${Cube.parse(c.full).length} Züge</div></div>
+          <div class="auto3d" data-auto="${c.id}"></div>${autoControls()}
           ${caseButtons(c)}
         </div>`;
       }).join('');
@@ -2381,6 +2447,7 @@ const Logic = (() => {
       title: `Lektion ${l.nr}`, back: '#/learn', tab: 'learn', wake: true, html: h,
       mount(el) {
         bindCaseButtons(el);
+        const stopAutos = mountAutos(el, l);
         const lb = $('[data-learn]', el);
         if (lb) lb.addEventListener('click', () => {
           Store.s.learned[l.id] = now();
@@ -2391,9 +2458,38 @@ const Logic = (() => {
         });
         const ub = $('[data-unlearn]', el);
         if (ub) ub.addEventListener('click', () => { delete Store.s.learned[l.id]; Store.save(); render(); });
+        return stopAutos;
       },
     };
   };
+
+  // Automatisch drehende Würfel in den Lektionen
+  const autoControls = () => `<div class="auto-ctrl"><button class="btn sm" data-autotoggle aria-label="Pause">${ICON.pause}</button>${speedSlider()}</div>`;
+  function mountAutos(el, l) {
+    const autos = [];
+    const io = typeof IntersectionObserver !== 'undefined'
+      ? new IntersectionObserver(es => es.forEach(e => { const a = e.target._auto; if (a) a.setVisible(e.isIntersecting); }), { threshold: 0.35 })
+      : null;
+    const paused = !Store.s.settings.autoplay;
+    for (const host of $$('[data-auto]', el)) {
+      const id = host.dataset.auto;
+      const label = id === '__l0' ? $('[data-autolabel]', el) : null;
+      const opts = id === '__l0'
+        ? { alg: host.dataset.alg, start: Cube.solved(), mask: 'full', onStep: (i, mv) => { if (label) label.textContent = mv[i] ? `${Cube.moveStr(mv[i])} – ${describe(mv[i])}` : ' '; } }
+        : { alg: CASES.get(id).full, start: caseState(CASES.get(id)), mask: CASES.get(id).mask };
+      const a = new Cube3D.Auto(host, Object.assign(opts, { getSpeed, paused }));
+      host._auto = a;
+      autos.push(a);
+      const btn = host.nextElementSibling && host.nextElementSibling.querySelector('[data-autotoggle]');
+      if (btn) {
+        const draw = () => { btn.innerHTML = a.paused ? ICON.play : ICON.pause; btn.setAttribute('aria-label', a.paused ? 'Abspielen' : 'Pause'); };
+        draw();
+        btn.addEventListener('click', () => { a.setPaused(!a.paused); draw(); });
+      }
+      if (io) io.observe(host); else a.setVisible(true);
+    }
+    return () => { autos.forEach(a => a.destroy()); if (io) io.disconnect(); };
+  }
 
   /* ---------- Drill (Leitner) ---------- */
   const D = { id: null, phase: 'setup', options: null, picked: null, ahead: false, last: null, session: 0, showAlg: false };
@@ -2723,7 +2819,8 @@ const Logic = (() => {
         <p class="muted small">Alles wird nur auf diesem Gerät gespeichert. Exportiere eine JSON-Datei als Backup oder um auf ein anderes Gerät umzuziehen.</p>
         <div class="btns two"><button class="btn primary" data-export>Exportieren</button><label class="btn">Importieren<input type="file" accept="application/json,.json" data-import hidden></label></div></div>
       <div class="card"><div class="eyebrow">Einstellungen</div>
-        <div style="padding:8px 0"><div style="margin-bottom:6px">Animationstempo</div><div class="seg" data-speed>${[0.5, 1, 1.5, 2].map(v => `<button data-v="${v}" class="${set.speed === v ? 'on' : ''}">${String(v).replace('.', ',')}×</button>`).join('')}</div></div>
+        <div style="padding:8px 0"><div style="margin-bottom:2px">Animationstempo</div>${speedSlider()}</div>
+        <label class="switch"><span>Würfel in Lektionen automatisch drehen</span><input type="checkbox" data-auto-set ${set.autoplay ? 'checked' : ''}></label>
         <label class="switch"><span>3D-Hilfe im Zug-für-Zug-Modus</span><input type="checkbox" data-s3d ${set.show3d ? 'checked' : ''}></label>
         <label class="switch"><span>15 s Inspektion im Timer</span><input type="checkbox" data-insp ${set.inspection ? 'checked' : ''}></label></div>
       <div class="card"><div class="eyebrow">App</div>
@@ -2753,7 +2850,7 @@ const Logic = (() => {
           } catch (err) { toast('Datei konnte nicht gelesen werden'); }
           e.target.value = '';
         });
-        $('[data-speed]', el).addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; set.speed = +b.dataset.v; Store.save(); render(); });
+        $('[data-auto-set]', el).addEventListener('change', e => { set.autoplay = e.target.checked; Store.save(); });
         $('[data-s3d]', el).addEventListener('change', e => { set.show3d = e.target.checked; Store.save(); });
         $('[data-insp]', el).addEventListener('change', e => { set.inspection = e.target.checked; Store.save(); });
         $('[data-reset]', el).addEventListener('click', () => { if (confirm('Wirklich alles löschen? Lektionen, Drill und Zeiten gehen verloren.')) { Store.reset(); render(); toast('Zurückgesetzt'); } });
