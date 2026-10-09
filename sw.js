@@ -1,5 +1,5 @@
 /* Cube Coach – Service Worker (cache-first, komplett offline) */
-const CACHE_VERSION = 'cube-coach-v1';
+const CACHE_VERSION = 'cube-coach-v2';
 const ASSETS = [
   './',
   './index.html',
